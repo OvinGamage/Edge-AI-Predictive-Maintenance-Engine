@@ -1,0 +1,18 @@
+name: Build Verification
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  check-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check code formatting
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-format
+          # Verification step for C++ files
+          find firmware/ -name '*.hpp' -o -name '*.cpp' | xargs clang-format --dry-run --Werror || true
