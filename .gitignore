@@ -1,0 +1,28 @@
+# Build & Binary Directories
+build/
+bin/
+lib/
+*.elf
+*.bin
+*.hex
+*.o
+*.a
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+.venv/
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
