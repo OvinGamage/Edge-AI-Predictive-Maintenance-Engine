@@ -1,7 +1,8 @@
 # 1. Target System Configuration (Bare-metal ARM)
-cmake_minimum_required(VERSION 3.15...3.28)
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR arm)
+# Force CMake to skip full executable linking tests during compiler checks
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # 2. Specify Cross-Compiler Toolchain Binaries
 set(TOOLCHAIN_PREFIX arm-none-eabi-)
@@ -18,6 +19,7 @@ set(ARM_FLAGS "-mcpu=cortex-m3 -mthumb")
 
 set(CMAKE_C_FLAGS_INIT   "${ARM_FLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "${ARM_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "${ARM_FLAGS} --specs=nano.specs --specs=nosys.specs")
 
 # 4. Search Path Controls
 # Prevent CMake from searching host system directories for headers/libraries
