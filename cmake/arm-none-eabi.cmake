@@ -1,4 +1,5 @@
 # 1. Target System Configuration (Bare-metal ARM)
+cmake_minimum_required(VERSION 3.15...3.28)
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR arm)
 
