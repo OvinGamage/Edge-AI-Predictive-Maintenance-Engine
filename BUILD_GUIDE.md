@@ -1,32 +1,40 @@
-1. System Requirements & Dependencies
+# Dual-Target Build System & CMake Operational Guide
+
+This document details the system requirements, build workflows, technical constraints, and configuration tweaks for the C++17 CMake dual-target build infrastructure.
+
+---
+
+## 1. System Requirements & Dependencies
+
 To configure and execute builds across both target platforms, the environment must satisfy the following dependencies:
 
-Build Tools: CMake (v3.15 or newer) and Ninja or GNU Make.
+* **Build Tools:** CMake (v3.15 or newer) and Ninja or GNU Make.
+* **Host Toolchain:** Native C++17 compiler (`g++` or `clang++`).
+* **Cross-Compiler Toolchain:** `arm-none-eabi-gcc` toolchain (including `gcc`, `g++`, `objcopy`, `objdump`, and `size`) available in system `$PATH`.
+* **Network Access:** Required on first host configuration to allow CMake’s `FetchContent` to download GoogleTest v1.14.0.
 
-Host Toolchain: Native C++17 compiler (g++ or clang++).
+---
 
-Cross-Compiler Toolchain: arm-none-eabi-gcc toolchain (including gcc, g++, objcopy, objdump, and size) available in system $PATH.
+## 2. Operating Instructions
 
-Network Access: Required on first host configuration to allow CMake’s FetchContent to download GoogleTest v1.14.0.
+The build system supports two isolated compilation workflows. Always use separate build directories (e.g., `build/host` vs. `build/arm`) to avoid compiler cache pollution.
 
-2. Operating Instructions
-The build system supports two isolated compilation workflows. Always use separate build directories (e.g., build/host vs build/arm) to avoid compiler cache pollution.
-
-A. Host Native Build (Unit Testing & Host Verification)
+### A. Host Native Build (Unit Testing & Host Verification)
 Generates native x86_64 host binaries, compiles the core library, fetches GoogleTest, and registers CTest test cases.
 
-Bash
-# 1. Configure the host build
+##bash
+B. ARM Target Cross-Compilation (Bare-Metal Binary)
+Invokes cmake/arm-none-eabi.cmake to switch the toolchain to arm-none-eabi-gcc for target ARM hardware. Automatically disables host GoogleTest execution.
+## 1. Configure the host build
 cmake -B build/host -S .
 
-# 2. Compile host targets (firmware_core & unit_tests)
+##2. Compile host targets (firmware_core & unit_tests)
 cmake --build build/host
 
 # 3. Execute unit tests via CTest
 ctest --test-dir build/host --output-on-failure
 B. ARM Target Cross-Compilation (Bare-Metal Binary)
 Invokes cmake/arm-none-eabi.cmake to switch the toolchain to arm-none-eabi-gcc for target ARM hardware. Automatically disables host GoogleTest execution.
-
 Bash
 # 1. Configure the ARM target build
 cmake -B build/arm -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
