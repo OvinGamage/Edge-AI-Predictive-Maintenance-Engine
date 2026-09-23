@@ -1,1 +1,46 @@
-# Placeholder for core firmware static library & binary targets
+# ------------------------------------------------------------------------------
+# 1. Core Static Library Target (firmware_core)
+# ------------------------------------------------------------------------------
+# Houses reusable firmware logic (DSP routines, RingBuffer, TFLM runner).
+# Currently lists dummy/stub sources — create these files in firmware/src/ to build.
+add_library(firmware_core STATIC
+    src/core/ring_buffer.cpp
+    src/core/dsp_features.cpp
+    src/ml/model_runner.cpp
+    src/drivers/uart.cpp
+)
+
+# Enforce strict C++17 standard rules on the library target
+set_target_properties(firmware_core PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+
+# Expose header include paths to any target linking against firmware_core
+target_include_directories(firmware_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# ------------------------------------------------------------------------------
+# 2. Executable Firmware Binary Target (firmware_app)
+# ------------------------------------------------------------------------------
+add_executable(firmware_app
+    src/main.cpp
+)
+
+target_link_libraries(firmware_app
+    PRIVATE
+        firmware_core
+)
+
+# ------------------------------------------------------------------------------
+# 3. Post-Build Memory Print for Bare-Metal ARM Target
+# ------------------------------------------------------------------------------
+if(CMAKE_CROSSCOMPILING AND CMAKE_SIZE)
+    add_custom_command(TARGET firmware_app POST_BUILD
+        COMMAND ${CMAKE_SIZE} $<TARGET_FILE:firmware_app>
+        COMMENT "Printing bare-metal executable RAM/Flash memory footprint:"
+    )
+endif()
