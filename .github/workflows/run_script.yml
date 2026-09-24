@@ -1,8 +1,9 @@
-name: Run C++ Script on GitHub Cloud
+name: Build and Test Workflow
 
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:  # <-- Adds the manual "Run workflow" button in the GitHub UI
 
 jobs:
   run-runner:
@@ -17,8 +18,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake build-essential
 
-      - name: Build and execute C++ application
+      - name: Build and execute native host tests
         run: |
-          cmake -B build
-          cmake --build build
-          ./build/firmware_app   # Runs directly on GitHub's cloud server!
+          cmake -B build/host -S .
+          cmake --build build/host
+          ctest --test-dir build/host --output-on-failure
