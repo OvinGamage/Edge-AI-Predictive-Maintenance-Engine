@@ -30,8 +30,8 @@ FetchContent_MakeAvailable(googletest)
 # Define Test Executable Target (unit_tests)
 # ------------------------------------------------------------------------------
 add_executable(unit_tests
-    unit/test_ring_buffer.cpp
-    unit/test_dsp_features.cpp
+    test_ring_buffer.cpp
+    test_dsp.cpp
 )
 
 # Enforce strict C++17 on unit test runner
