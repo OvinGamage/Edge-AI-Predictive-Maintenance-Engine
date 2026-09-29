@@ -1,100 +1,140 @@
 # Dual-Target Build System & CMake Operational Guide
 
-This document details the system requirements, build workflows, technical constraints, and configuration tweaks for the C++17 CMake dual-target build infrastructure.
+This guide documents system requirements, supported build workflows, constraints, and common configuration tweaks for the C++17 CMake dual-target build infrastructure (host + ARM bare-metal).
 
 ---
 
 ## 1. System Requirements & Dependencies
 
-To configure and execute builds across both target platforms, the environment must satisfy the following dependencies:
+To configure and execute builds for both target platforms, ensure the environment meets these prerequisites:
 
-* **Build Tools:** CMake (v3.15 or newer) and Ninja or GNU Make.
-* **Host Toolchain:** Native C++17 compiler (`g++` or `clang++`).
-* **Cross-Compiler Toolchain:** `arm-none-eabi-gcc` toolchain (including `gcc`, `g++`, `objcopy`, `objdump`, and `size`) available in system `$PATH`.
-* **Network Access:** Required on first host configuration to allow CMake’s `FetchContent` to download GoogleTest v1.14.0.
+- **Build tools**
+  - CMake v3.15 or newer
+  - Ninja or GNU Make
+- **Host toolchain**
+  - Native C++17 compiler (`g++` or `clang++`)
+- **Cross-compiler toolchain**
+  - `arm-none-eabi-gcc` toolchain, including `gcc`, `g++`, `objcopy`, `objdump`, and `size`, available in the system `$PATH`
+- **Network access**
+  - Required during the first host configuration so CMake's `FetchContent` can download GoogleTest v1.14.0.
 
 ---
 
 ## 2. Operating Instructions
 
-The build system supports two isolated compilation workflows. Always use separate build directories (e.g., `build/host` vs. `build/arm`) to avoid compiler cache pollution.
+The build system supports two isolated compilation workflows. Always use separate build directories, such as `build/host` and `build/arm`, to avoid compiler-cache and artifact pollution.
 
-### A. Host Native Build (Unit Testing & Host Verification)
-Generates native x86_64 host binaries, compiles the core library, fetches GoogleTest, and registers CTest test cases.
+### A. Host Native Build: Unit Testing and Host Verification
 
-##bash
-B. ARM Target Cross-Compilation (Bare-Metal Binary)
-Invokes cmake/arm-none-eabi.cmake to switch the toolchain to arm-none-eabi-gcc for target ARM hardware. Automatically disables host GoogleTest execution.
-## 1. Configure the host build
-cmake -B build/host -S .
+This workflow generates native x86_64 host binaries, compiles the core library, fetches GoogleTest, and registers CTest test cases.
 
-##2. Compile host targets (firmware_core & unit_tests)
-cmake --build build/host
+1. Configure the host build:
 
-# 3. Execute unit tests via CTest
-ctest --test-dir build/host --output-on-failure
-B. ARM Target Cross-Compilation (Bare-Metal Binary)
-Invokes cmake/arm-none-eabi.cmake to switch the toolchain to arm-none-eabi-gcc for target ARM hardware. Automatically disables host GoogleTest execution.
-Bash
-# 1. Configure the ARM target build
-cmake -B build/arm -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
+   ```bash
+   cmake -B build/host -S .
+   ```
 
-# 2. Compile bare-metal executable (firmware_app)
-cmake --build build/arm
-Upon build completion, arm-none-eabi-size automatically prints the final Flash/RAM memory footprint in the terminal.
+2. Compile the host targets (`firmware_core` and `unit_tests`):
 
-3. Key Limitations & Design Constraints
-Host-Only Unit Tests: GoogleTest targets (unit_tests) are disabled during ARM cross-compilation (if(CMAKE_CROSSCOMPILING) is active) because bare-metal environments lack standard OS threading and file I/O primitives.
+   ```bash
+   cmake --build build/host
+   ```
 
-Missing Source Files: CMake requires source files listed in add_library() or add_executable() to exist on disk during the configuration step. If files are missing, configuration will fail.
+3. Run the unit tests with CTest:
 
-Compiler Test Safety: The toolchain file forces CMAKE_TRY_COMPILE_TARGET_TYPE to STATIC_LIBRARY. This prevents CMake's initial compiler check from failing due to missing bare-metal RAM/Flash linker maps.
+   ```bash
+   ctest --test-dir build/host --output-on-failure
+   ```
 
-4. How to Tweak & Customize the CMake Scripts
-Changing Hardware/CPU Target Flags
-If porting to a different ARM Cortex-M core (e.g., Cortex-M4 with Floating Point Unit):
+### B. ARM Target Cross-Compilation: Bare-Metal Binary
 
-File: cmake/arm-none-eabi.cmake
+This workflow uses `cmake/arm-none-eabi.cmake` to select the `arm-none-eabi-gcc` toolchain for ARM hardware. Host GoogleTest execution is automatically disabled during cross-compilation.
 
-Modification: Update ARM_FLAGS:
+1. Configure the ARM build:
 
-CMake
-# Example: Updating to Cortex-M4 with Hard FP support
+   ```bash
+   cmake -B build/arm -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
+   ```
+
+2. Compile the bare-metal executable (`firmware_app`):
+
+   ```bash
+   cmake --build build/arm
+   ```
+
+After the build completes, `arm-none-eabi-size` automatically prints the final Flash/RAM memory footprint in the terminal.
+
+---
+
+## 3. Key Limitations and Design Constraints
+
+### Host-Only Unit Tests
+
+GoogleTest targets such as `unit_tests` are disabled during ARM cross-compilation when `CMAKE_CROSSCOMPILING` is active. Bare-metal environments generally lack the standard OS threading, filesystem, and process support required by GoogleTest.
+
+### Missing Source Files
+
+CMake requires all source files listed in `add_library()` or `add_executable()` to exist on disk during configuration. If a source file is missing, configuration fails.
+
+### Compiler-Test Safety
+
+The toolchain file sets `CMAKE_TRY_COMPILE_TARGET_TYPE` to `STATIC_LIBRARY`. This prevents CMake's initial compiler check from failing when bare-metal RAM/Flash linker support is unavailable during the test link step.
+
+---
+
+## 4. How to Tweak and Customize the CMake Scripts
+
+### Changing Hardware/CPU Target Flags
+
+**File:** `cmake/arm-none-eabi.cmake`
+
+When porting to a different ARM Cortex-M core, update `ARM_FLAGS` to match the target CPU and ABI. For example, the following flags target a Cortex-M4 with hard floating-point support:
+
+```cmake
 set(ARM_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard")
-Adding New C++ Source Files
-When adding new implementation files or modules to your application:
+```
 
-File: firmware/CMakeLists.txt
+### Adding New C++ Source Files
 
-Modification: Append relative path strings to add_library(firmware_core STATIC ...):
+**File:** `firmware/CMakeLists.txt`
 
-CMake
+When adding implementation files or modules, append their relative paths to `add_library(firmware_core STATIC ...)`:
+
+```cmake
 add_library(firmware_core STATIC
     src/core/ring_buffer.cpp
     src/core/dsp_features.cpp
-    src/core/new_module.cpp  # <--- Add new source files here
+    src/core/new_module.cpp  # Add new source files here
 )
-Adding New Unit Test Suites
-When creating a new GoogleTest file:
+```
 
-File: tests/CMakeLists.txt
+Make sure the new files exist on disk before running CMake configuration.
 
-Modification: Add the test file to add_executable(unit_tests ...):
+### Adding New Unit Test Suites
 
-CMake
+**File:** `tests/CMakeLists.txt`
+
+When creating a new GoogleTest file, add it to `add_executable(unit_tests ...)`:
+
+```cmake
 add_executable(unit_tests
     unit/test_ring_buffer.cpp
-    unit/test_new_module.cpp # <--- Add test suites here
+    unit/test_new_module.cpp  # Add new test suites here
 )
-Adjusting GoogleTest Version
-To update or freeze the version of GoogleTest downloaded:
+```
 
-File: tests/CMakeLists.txt
+The test target is configured only for host builds when GoogleTest is provided through `FetchContent`.
 
-Modification: Change GIT_TAG inside FetchContent_Declare:
+### Adjusting the GoogleTest Version
 
-CMake
+**File:** `tests/CMakeLists.txt`
+
+To update or pin the GoogleTest version, change `GIT_TAG` inside `FetchContent_Declare`:
+
+```cmake
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.15.0  # <--- Modify target release tag or commit hash
+    GIT_TAG        v1.15.0  # Set the desired release tag or commit hash
+)
+```
