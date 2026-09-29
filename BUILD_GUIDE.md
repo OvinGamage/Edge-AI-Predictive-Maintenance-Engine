@@ -1,250 +1,247 @@
-# Dual-Target Build System & CMake Operational Guide
+# Build and Setup Guide
 
-This guide documents system requirements, supported build workflows, constraints, and common configuration tweaks for the C++17 CMake dual-target build infrastructure (host + ARM bare-metal).
-
----
-
-## 1. System Requirements & Dependencies
-
-To configure and execute builds for both target platforms, ensure the environment meets these prerequisites:
-
-- **Build tools**
-  - CMake v3.15 or newer
-  - Ninja or GNU Make
-- **Host toolchain**
-  - Native C++17 compiler (`g++` or `clang++`)
-- **Cross-compiler toolchain**
-  - `arm-none-eabi-gcc` toolchain, including `gcc`, `g++`, `objcopy`, `objdump`, and `size`, available in the system `$PATH`
-- **Network access**
-  - Required during the first host configuration so CMake's `FetchContent` can download GoogleTest v1.14.0.
+This guide explains how to set up the project, install required dependencies, run the ML training/export pipeline, build the C++ firmware for host and ARM targets, and execute the test suite.
 
 ---
 
-## 2. Operating Instructions
+## 1. System Requirements
 
-The build system supports two isolated compilation workflows. Always use separate build directories, such as `build/host` and `build/arm`, to avoid compiler-cache and artifact pollution.
+Before building, make sure the following tools are available:
 
-### A. Host Native Build: Unit Testing and Host Verification
-
-This workflow generates native x86_64 host binaries, compiles the core library, fetches GoogleTest, and registers CTest test cases.
-
-1. Configure the host build:
-
-   ```bash
-   cmake -B build/host -S .
-   ```
-
-2. Compile the host targets (`firmware_core` and `unit_tests`):
-
-   ```bash
-   cmake --build build/host
-   ```
-
-3. Run the unit tests with CTest:
-
-   ```bash
-   ctest --test-dir build/host --output-on-failure
-   ```
-
-### B. ARM Target Cross-Compilation: Bare-Metal Binary
-
-This workflow uses `cmake/arm-none-eabi.cmake` to select the `arm-none-eabi-gcc` toolchain for ARM hardware. Host GoogleTest execution is automatically disabled during cross-compilation.
-
-1. Configure the ARM build:
-
-   ```bash
-   cmake -B build/arm -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
-   ```
-
-2. Compile the bare-metal executable (`firmware_app`):
-
-   ```bash
-   cmake --build build/arm
-   ```
-
-After the build completes, `arm-none-eabi-size` automatically prints the final Flash/RAM memory footprint in the terminal.
+- Git (v2.25 or newer)
+- CMake (v3.15 or newer)
+- A C++17 compiler:
+  - Linux: `gcc` / `g++`
+  - macOS: Apple Clang / Xcode Command Line Tools
+  - Windows: MSYS2 MinGW-w64 or Visual Studio 2019+
+- Python 3.9+
+- `pip`
+- Optional for ARM builds: `arm-none-eabi-gcc` toolchain and related utilities (`objcopy`, `objdump`, `size`)
+- Network access for first-time dependency fetches, including GoogleTest and external third-party headers
 
 ---
 
-## 3. Key Limitations and Design Constraints
+## 2. Clone the Repository
 
-### Host-Only Unit Tests
+Because this project includes TensorFlow Lite Micro submodules and third-party dependencies, clone the repository recursively.
 
-GoogleTest targets such as `unit_tests` are disabled during ARM cross-compilation when `CMAKE_CROSSCOMPILING` is active. Bare-metal environments generally lack the standard OS threading, filesystem, and process support required by GoogleTest.
+### Option A: Recursive clone (recommended)
 
-### Missing Source Files
+```bash
+git clone --recursive <repository-url>
+cd Machine-Learning
+```
 
-CMake requires all source files listed in `add_library()` or `add_executable()` to exist on disk during configuration. If a source file is missing, configuration fails.
+### Option B: If already cloned without `--recursive`
 
-### Compiler-Test Safety
-
-The toolchain file sets `CMAKE_TRY_COMPILE_TARGET_TYPE` to `STATIC_LIBRARY`. This prevents CMake's initial compiler check from failing when bare-metal RAM/Flash linker support is unavailable during the test link step.
+```bash
+git submodule update --init --recursive
+```
 
 ---
 
-## 4. How to Tweak and Customize the CMake Scripts
+## 3. Prepare TensorFlow Lite Micro Dependencies
 
-### Changing Hardware/CPU Target Flags
+The project uses TensorFlow Lite Micro plus third-party support libraries. These dependencies must be available under `firmware/lib/tflite-micro/third_party`.
 
-**File:** `cmake/arm-none-eabi.cmake`
+### Linux / macOS
 
-When porting to a different ARM Cortex-M core, update `ARM_FLAGS` to match the target CPU and ABI. For example, the following flags target a Cortex-M4 with hard floating-point support:
+```bash
+cd firmware/lib/tflite-micro
+
+mkdir -p third_party/flatbuffers/include third_party/gemmlowp third_party/ruy
+
+git clone --depth 1 https://github.com/google/flatbuffers.git third_party/flatbuffers_repo
+cp -r third_party/flatbuffers_repo/include/flatbuffers third_party/flatbuffers/include/
+
+git clone --depth 1 https://github.com/google/gemmlowp.git third_party/gemmlowp_repo
+cp -r third_party/gemmlowp_repo/fixedpoint third_party/gemmlowp/
+cp -r third_party/gemmlowp_repo/internal third_party/gemmlowp/
+
+rm -rf third_party/flatbuffers_repo third_party/gemmlowp_repo
+
+cd ../../..
+```
+
+### Windows (PowerShell)
+
+```powershell
+cd firmware/lib/tflite-micro
+
+New-Item -ItemType Directory -Force -Path "third_party/flatbuffers/include", "third_party/gemmlowp", "third_party/ruy"
+
+git clone --depth 1 https://github.com/google/flatbuffers.git third_party/flatbuffers_repo
+Copy-Item -Recurse -Force "third_party/flatbuffers_repo/include/flatbuffers" "third_party/flatbuffers/include/"
+
+git clone --depth 1 https://github.com/google/gemmlowp.git third_party/gemmlowp_repo
+Copy-Item -Recurse -Force "third_party/gemmlowp_repo/fixedpoint" "third_party/gemmlowp/"
+Copy-Item -Recurse -Force "third_party/gemmlowp_repo/internal" "third_party/gemmlowp/"
+
+Remove-Item -Recurse -Force "third_party/flatbuffers_repo", "third_party/gemmlowp_repo"
+
+cd ../../..
+```
+
+---
+
+## 4. Install Python Dependencies
+
+Install the required Python packages for training and model export:
+
+```bash
+pip install tensorflow numpy scikit-learn
+```
+
+Then run the ML pipeline:
+
+```bash
+python ml_pipeline/train.py
+```
+
+This generates the model artifact and updates `firmware/include/model_data.h` with the embedded model data.
+
+---
+
+## 5. Build the Project with CMake
+
+The project supports two build workflows:
+
+- Host build for native unit tests
+- ARM cross-build for bare-metal firmware
+
+Use separate build directories for each workflow.
+
+### 5.1 Host Build (Native Unit Tests)
+
+Configure the host build:
+
+```bash
+cmake -B build/host -S .
+```
+
+Build the targets:
+
+```bash
+cmake --build build/host
+```
+
+Run the tests:
+
+```bash
+ctest --test-dir build/host --output-on-failure
+```
+
+This workflow compiles the core library and the GoogleTest-based unit test target.
+
+### 5.2 ARM Cross-Compilation
+
+Configure the ARM build using the toolchain file:
+
+```bash
+cmake -B build/arm -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
+```
+
+Build the bare-metal firmware:
+
+```bash
+cmake --build build/arm
+```
+
+After the build finishes, `arm-none-eabi-size` prints the resulting SRAM/Flash memory usage.
+
+---
+
+## 6. Run Unit Tests
+
+To validate DSP feature extraction, ring buffer behavior, and host-side inference logic:
+
+```bash
+cd build/host
+ctest --output-on-failure
+```
+
+---
+
+## 7. CMake Build Notes and Constraints
+
+### Host-only unit tests
+
+GoogleTest targets are disabled during ARM cross-compilation when `CMAKE_CROSSCOMPILING` is enabled. Bare-metal targets generally cannot run host-based unit tests.
+
+### Missing source files
+
+CMake requires every file listed in `add_library()` or `add_executable()` to exist on disk before configuration succeeds.
+
+### Compiler-check safety
+
+The ARM toolchain file sets `CMAKE_TRY_COMPILE_TARGET_TYPE` to `STATIC_LIBRARY` to avoid failures during the initial compiler check when bare-metal memory constraints are not available in the host environment.
+
+---
+
+## 8. Customizing the CMake Setup
+
+### Change hardware / CPU flags
+
+File: `cmake/arm-none-eabi.cmake`
+
+Update `ARM_FLAGS` for the target CPU and ABI:
 
 ```cmake
 set(ARM_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard")
 ```
 
-### Adding New C++ Source Files
+### Add new C++ source files
 
-**File:** `firmware/CMakeLists.txt`
+File: `firmware/CMakeLists.txt`
 
-When adding implementation files or modules, append their relative paths to `add_library(firmware_core STATIC ...)`:
+Append the implementation paths to the `add_library(firmware_core STATIC ...)` block:
 
 ```cmake
 add_library(firmware_core STATIC
     src/core/ring_buffer.cpp
     src/core/dsp_features.cpp
-    src/core/new_module.cpp  # Add new source files here
+    src/core/new_module.cpp
 )
 ```
 
-Make sure the new files exist on disk before running CMake configuration.
+### Add a new unit test suite
 
-### Adding New Unit Test Suites
+File: `tests/CMakeLists.txt`
 
-**File:** `tests/CMakeLists.txt`
-
-When creating a new GoogleTest file, add it to `add_executable(unit_tests ...)`:
+Add the new test file to the `add_executable(unit_tests ...)` command:
 
 ```cmake
 add_executable(unit_tests
     unit/test_ring_buffer.cpp
-    unit/test_new_module.cpp  # Add new test suites here
+    unit/test_new_module.cpp
 )
 ```
 
-The test target is configured only for host builds when GoogleTest is provided through `FetchContent`.
+### Pin or update GoogleTest version
 
-### Adjusting the GoogleTest Version
+File: `tests/CMakeLists.txt`
 
-**File:** `tests/CMakeLists.txt`
-
-To update or pin the GoogleTest version, change `GIT_TAG` inside `FetchContent_Declare`:
+Modify the `FetchContent_Declare` entry:
 
 ```cmake
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.15.0  # Set the desired release tag or commit hash
+    GIT_TAG v1.15.0
 )
 ```
-# Firmware & ML Development Setup Guide
-
-This guide details the prerequisites and step-by-step commands required to set up the environment, run the ML training pipeline, compile the C++ firmware, and execute unit tests.
 
 ---
 
-## 1. System Prerequisites
+## 9. Summary
 
-Ensure the following tools are installed on your host system:
+To build and validate the project successfully:
 
-* **Git** (v2.25 or higher)
-* **CMake** (v3.14 or higher)
-* **C++ Compiler** with standard `C++17` support:
-  * **Linux:** `gcc` / `g++` (v9+)
-  * **Windows:** MSYS2 MinGW-w64 (`g++`) or MSVC (Visual Studio 2019+)
-  * **macOS:** Apple Clang / Xcode Command Line Tools
-* **Python 3.9+** (with `pip`)
+1. Clone the repo recursively.
+2. Populate the TensorFlow Lite Micro third-party dependencies.
+3. Install Python dependencies.
+4. Run the ML pipeline to generate the embedded model data.
+5. Configure and build the host or ARM target with CMake.
+6. Run CTest for verification.
 
----
-
-## 2. Cloning the Repository
-
-Because this project utilizes TensorFlow Lite Micro as a Git submodule, you must clone the repository recursively to fetch all dependencies.
-
-### Option A: Recursive Clone (Recommended)
-```bash
-git clone --recursive <repository-url>
-cd Machine-Learning
-Option B: If Cloned Without --recursive
-If you already ran a standard git clone, initialize and update the submodules manually:
-
-Bash
-git submodule update --init --recursive
-3. Populating Third-Party Dependencies
-TensorFlow Lite Micro requires third-party C++ headers (FlatBuffers and gemmlowp). If these are not present inside firmware/lib/tflite-micro/third_party, populate them using the script below.
-
-Windows (PowerShell)
-PowerShell
-cd firmware/lib/tflite-micro
-
-# Create third-party target directories
-New-Item -ItemType Directory -Force -Path "third_party/flatbuffers/include", "third_party/gemmlowp", "third_party/ruy"
-
-# Fetch FlatBuffers headers
-git clone --depth 1 [https://github.com/google/flatbuffers.git](https://github.com/google/flatbuffers.git) third_party/flatbuffers_repo
-Copy-Item -Recurse -Force "third_party/flatbuffers_repo/include/flatbuffers" "third_party/flatbuffers/include/"
-
-# Fetch Gemmlowp headers
-git clone --depth 1 [https://github.com/google/gemmlowp.git](https://github.com/google/gemmlowp.git) third_party/gemmlowp_repo
-Copy-Item -Recurse -Force "third_party/gemmlowp_repo/fixedpoint" "third_party/gemmlowp/"
-Copy-Item -Recurse -Force "third_party/gemmlowp_repo/internal" "third_party/gemmlowp/"
-
-# Clean up temporary clones
-Remove-Item -Recurse -Force "third_party/flatbuffers_repo", "third_party/gemmlowp_repo"
-cd ../../..
-Linux / macOS (Bash)
-Bash
-cd firmware/lib/tflite-micro
-
-# Create third-party target directories
-mkdir -p third_party/flatbuffers/include third_party/gemmlowp third_party/ruy
-
-# Fetch FlatBuffers headers
-git clone --depth 1 [https://github.com/google/flatbuffers.git](https://github.com/google/flatbuffers.git) third_party/flatbuffers_repo
-cp -r third_party/flatbuffers_repo/include/flatbuffers third_party/flatbuffers/include/
-
-# Fetch Gemmlowp headers
-git clone --depth 1 [https://github.com/google/gemmlowp.git](https://github.com/google/gemmlowp.git) third_party/gemmlowp_repo
-cp -r third_party/gemmlowp_repo/fixedpoint third_party/gemmlowp/
-cp -r third_party/gemmlowp_repo/internal third_party/gemmlowp/
-
-# Clean up temporary clones
-rm -rf third_party/flatbuffers_repo third_party/gemmlowp_repo
-cd ../../..
-4. Machine Learning Pipeline (Python)
-The ML pipeline handles model training, INT8 post-training quantization, threshold extraction, and C++ header generation (model_data.h).
-
-Install Python dependencies:
-
-Bash
-pip install tensorflow numpy scikit-learn
-Run the consolidated training and export pipeline:
-
-Bash
-python ml_pipeline/train.py
-This outputs model.tflite and automatically updates firmware/include/model_data.h.
-
-5. Building the Firmware (CMake)
-Create and enter the build directory:
-
-Bash
-mkdir -p build && cd build
-Generate build files with CMake:
-
-Bash
-cmake ..
-Compile the binary targets:
-
-Bash
-cmake --build .
-6. Running Unit Tests
-To verify DSP feature extraction, ring buffer handling, and TFLm model inference on host hardware:
-
-Bash
-# Execute unit tests from inside the build directory
-ctest --output-on-failure
-
-
-
-
+This workflow keeps host development, ARM firmware compilation, and ML model generation separate while maintaining a consistent build flow.
