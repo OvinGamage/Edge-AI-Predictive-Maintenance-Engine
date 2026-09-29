@@ -23,3 +23,9 @@ jobs:
           cmake -B build/host -S .
           cmake --build build/host --target unit_tests
           ctest --test-dir build/host --output-on-failure
+      
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
