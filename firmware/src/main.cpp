@@ -1,9 +1,9 @@
 #include <cstdio>
 #include <cstdint>
 
-#include "peripherals/uart.hpp"
-#include "dsp/ring_buffer.hpp"
-#include "dsp/dsp_features.hpp"
+#include "drivers/uart.hpp"
+#include "core/ring_buffer.hpp"
+#include "core/dsp_features.hpp"
 #include "ml/model_runner.hpp"
 
 // Anomaly Detection Thresholds (Tuned during training)
