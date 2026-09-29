@@ -1,8 +1,6 @@
 # ------------------------------------------------------------------------------
 # 1. Core Static Library Target (firmware_core)
 # ------------------------------------------------------------------------------
-# Houses reusable firmware logic (DSP routines, RingBuffer, TFLM runner).
-# Currently lists dummy/stub sources — create these files in firmware/src/ to build.
 add_library(firmware_core STATIC
     src/core/ring_buffer.cpp
     src/core/dsp_features.cpp
@@ -17,10 +15,11 @@ set_target_properties(firmware_core PROPERTIES
     CXX_EXTENSIONS OFF
 )
 
-# Expose header include paths to any target linking against firmware_core
+# Expose header include paths to firmware_core and dependent targets
 target_include_directories(firmware_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/tflite-micro
 )
 
 # ------------------------------------------------------------------------------

@@ -7,6 +7,9 @@ lib/
 *.hex
 *.o
 *.a
+.pio/
+# If lib/ was previously ignored, unignore tflite-micro submodule:
+!firmware/lib/tflite-micro
 
 # Python & Virtual Environments
 __pycache__/
