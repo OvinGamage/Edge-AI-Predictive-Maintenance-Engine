@@ -1,17 +1,25 @@
 #include "ml/model_runner.hpp"
 
 bool ModelRunner::init() {
-    // Load model from model_data.h
+    // Register Ops needed for Dense Autoencoder
+    resolver.AddFullyConnected();
+    resolver.AddRelu();
+    resolver.AddQuantize();
+    resolver.AddDequantize();
+    resolver.AddReshape();
+
+    // 1. Map model
     model = tflite::GetModel(g_model);
     if (model->version() != TFLITE_SCHEMA_VERSION) {
         return false;
     }
 
-    // Allocate static interpreter instance
+    // 2. Instantiate interpreter
     static tflite::MicroInterpreter static_interpreter(
         model, resolver, tensor_arena, kTensorArenaSize);
     interpreter = &static_interpreter;
 
+    // 3. Allocate tensor memory
     if (interpreter->AllocateTensors() != kTfLiteOk) {
         return false;
     }
@@ -22,20 +30,28 @@ bool ModelRunner::init() {
 }
 
 void ModelRunner::set_input(const int8_t quantized_input[3]) {
-    for (int i = 0; i < 3; i++) {
-        input_tensor->data.int8[i] = quantized_input[i];
+    if (input_tensor != nullptr && input_tensor->data.int8 != nullptr) {
+        for (int i = 0; i < 3; i++) {
+            input_tensor->data.int8[i] = quantized_input[i];
+        }
     }
 }
 
 bool ModelRunner::run() {
+    if (interpreter == nullptr) return false;
     return interpreter->Invoke() == kTfLiteOk;
 }
 
 const int8_t* ModelRunner::get_output() const {
+    if (output_tensor == nullptr) return nullptr;
     return output_tensor->data.int8;
 }
 
 float ModelRunner::compute_reconstruction_mse() const {
+    if (input_tensor == nullptr || output_tensor == nullptr) {
+        return 0.0f;
+    }
+
     float input_scale = input_tensor->params.scale;
     int32_t input_zp = input_tensor->params.zero_point;
     float output_scale = output_tensor->params.scale;
@@ -48,5 +64,5 @@ float ModelRunner::compute_reconstruction_mse() const {
         float diff = in_dequant - out_dequant;
         mse += diff * diff;
     }
-    return mse / 3.0f;
+    return mse / 3.0f; // Mean squared error across 3 features
 }

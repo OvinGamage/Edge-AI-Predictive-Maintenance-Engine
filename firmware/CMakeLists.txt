@@ -16,10 +16,14 @@ set_target_properties(firmware_core PROPERTIES
 )
 
 # Expose header include paths to firmware_core and dependent targets
+# Expose include directory paths to firmware_core and dependent targets
 target_include_directories(firmware_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/lib/tflite-micro
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/tflite-micro/third_party/flatbuffers/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/tflite-micro/third_party/gemmlowp
+      
 )
 
 # ------------------------------------------------------------------------------
