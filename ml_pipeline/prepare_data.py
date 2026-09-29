@@ -1,7 +1,7 @@
 from pathlib import Path
-import pandas as pd
-import numpy as np
-from scipy.stats import kurtosis
+import pandas as pd  # type: ignore[import-not-found]
+import numpy as np  # type: ignore[import-not-found]
+from scipy.stats import kurtosis  # type: ignore[import-not-found]
 
 # 1. Define paths relative to the project root
 DATA_DIR = Path(__file__).parent / "data"
