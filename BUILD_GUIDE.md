@@ -138,3 +138,113 @@ FetchContent_Declare(
     GIT_TAG        v1.15.0  # Set the desired release tag or commit hash
 )
 ```
+# Firmware & ML Development Setup Guide
+
+This guide details the prerequisites and step-by-step commands required to set up the environment, run the ML training pipeline, compile the C++ firmware, and execute unit tests.
+
+---
+
+## 1. System Prerequisites
+
+Ensure the following tools are installed on your host system:
+
+* **Git** (v2.25 or higher)
+* **CMake** (v3.14 or higher)
+* **C++ Compiler** with standard `C++17` support:
+  * **Linux:** `gcc` / `g++` (v9+)
+  * **Windows:** MSYS2 MinGW-w64 (`g++`) or MSVC (Visual Studio 2019+)
+  * **macOS:** Apple Clang / Xcode Command Line Tools
+* **Python 3.9+** (with `pip`)
+
+---
+
+## 2. Cloning the Repository
+
+Because this project utilizes TensorFlow Lite Micro as a Git submodule, you must clone the repository recursively to fetch all dependencies.
+
+### Option A: Recursive Clone (Recommended)
+```bash
+git clone --recursive <repository-url>
+cd Machine-Learning
+Option B: If Cloned Without --recursive
+If you already ran a standard git clone, initialize and update the submodules manually:
+
+Bash
+git submodule update --init --recursive
+3. Populating Third-Party Dependencies
+TensorFlow Lite Micro requires third-party C++ headers (FlatBuffers and gemmlowp). If these are not present inside firmware/lib/tflite-micro/third_party, populate them using the script below.
+
+Windows (PowerShell)
+PowerShell
+cd firmware/lib/tflite-micro
+
+# Create third-party target directories
+New-Item -ItemType Directory -Force -Path "third_party/flatbuffers/include", "third_party/gemmlowp", "third_party/ruy"
+
+# Fetch FlatBuffers headers
+git clone --depth 1 [https://github.com/google/flatbuffers.git](https://github.com/google/flatbuffers.git) third_party/flatbuffers_repo
+Copy-Item -Recurse -Force "third_party/flatbuffers_repo/include/flatbuffers" "third_party/flatbuffers/include/"
+
+# Fetch Gemmlowp headers
+git clone --depth 1 [https://github.com/google/gemmlowp.git](https://github.com/google/gemmlowp.git) third_party/gemmlowp_repo
+Copy-Item -Recurse -Force "third_party/gemmlowp_repo/fixedpoint" "third_party/gemmlowp/"
+Copy-Item -Recurse -Force "third_party/gemmlowp_repo/internal" "third_party/gemmlowp/"
+
+# Clean up temporary clones
+Remove-Item -Recurse -Force "third_party/flatbuffers_repo", "third_party/gemmlowp_repo"
+cd ../../..
+Linux / macOS (Bash)
+Bash
+cd firmware/lib/tflite-micro
+
+# Create third-party target directories
+mkdir -p third_party/flatbuffers/include third_party/gemmlowp third_party/ruy
+
+# Fetch FlatBuffers headers
+git clone --depth 1 [https://github.com/google/flatbuffers.git](https://github.com/google/flatbuffers.git) third_party/flatbuffers_repo
+cp -r third_party/flatbuffers_repo/include/flatbuffers third_party/flatbuffers/include/
+
+# Fetch Gemmlowp headers
+git clone --depth 1 [https://github.com/google/gemmlowp.git](https://github.com/google/gemmlowp.git) third_party/gemmlowp_repo
+cp -r third_party/gemmlowp_repo/fixedpoint third_party/gemmlowp/
+cp -r third_party/gemmlowp_repo/internal third_party/gemmlowp/
+
+# Clean up temporary clones
+rm -rf third_party/flatbuffers_repo third_party/gemmlowp_repo
+cd ../../..
+4. Machine Learning Pipeline (Python)
+The ML pipeline handles model training, INT8 post-training quantization, threshold extraction, and C++ header generation (model_data.h).
+
+Install Python dependencies:
+
+Bash
+pip install tensorflow numpy scikit-learn
+Run the consolidated training and export pipeline:
+
+Bash
+python ml_pipeline/train.py
+This outputs model.tflite and automatically updates firmware/include/model_data.h.
+
+5. Building the Firmware (CMake)
+Create and enter the build directory:
+
+Bash
+mkdir -p build && cd build
+Generate build files with CMake:
+
+Bash
+cmake ..
+Compile the binary targets:
+
+Bash
+cmake --build .
+6. Running Unit Tests
+To verify DSP feature extraction, ring buffer handling, and TFLm model inference on host hardware:
+
+Bash
+# Execute unit tests from inside the build directory
+ctest --output-on-failure
+
+
+
+
