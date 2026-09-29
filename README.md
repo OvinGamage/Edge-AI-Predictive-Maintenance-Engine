@@ -1,46 +1,67 @@
 # Edge AI Predictive Maintenance Engine
-Note on Project Architecture & Tooling:
-To ensure this project is 100% reproducible and isolated, the entire build ecosystem (CMake toolchains, cross-compilers, QEMU ARM simulation, and multi-stage Docker containers) is pre-configured for one-command execution.
-  
-  ​The administrative build infrastructure and containerization are provided purely for reviewer/user convenience. The core technical focus of this repository is the low-level bare-metal C++17 firmware, zero-allocation DSP algorithms, and embedded TFLM runtime execution.
-An end-to-end bare-metal C++ edge inference engine running in a QEMU-simulated ARM Cortex-M architecture with real-time Python telemetry analytics.
-##📊 Dataset Setup & Quick Start
-1. Acquiring the Dataset
-This project uses the NASA C-MAPSS (Commercial Modular Aero-Propulsion System Simulation) Flight Data Set (FD001). Due to repository size constraints, raw data files are not tracked by Git.
+
+An end-to-end bare-metal C++ edge inference engine running on a QEMU-simulated ARM Cortex-M architecture, with real-time Python telemetry analytics.
+
+## Project Architecture and Tooling
+
+The project is designed to be reproducible and isolated. The complete build ecosystem is pre-configured, including:
+
+- CMake toolchains
+- Cross-compilers
+- QEMU ARM simulation
+- Multi-stage Docker containers
+
+The build infrastructure and containerization are provided for reviewer and user convenience. The core technical focus of this repository is the low-level bare-metal C++17 firmware and its edge machine-learning inference workflow.
+
+## System Architecture
+
+| Component | Technology |
+| --- | --- |
+| Firmware | C++17, bare-metal ARM Cortex-M, QEMU |
+| ML inference | TensorFlow Lite for Microcontrollers (TFLM) |
+| Data and dashboard | Python, Streamlit, Polars/Pandas |
+
+## Dataset Setup
+
+This project uses the NASA C-MAPSS (Commercial Modular Aero-Propulsion System Simulation) Flight Data Set, specifically the FD001 subset. Because of repository size constraints, the raw data files are not tracked in Git.
+
+### 1. Download the dataset
 
 Download the dataset archive from the NASA Data Portal.
 
-Extract the archive contents into the local ml_pipeline/data/ directory:
+### 2. Extract the data
 
-Plaintext
+Extract the following files into `ml_pipeline/data/`:
+
+```text
 ml_pipeline/data/
 ├── train_FD001.txt
 ├── test_FD001.txt
 └── RUL_FD001.txt
-2. How to Run the Pipeline locally
-After cloning the repository, execute the automated data preparation and feature extraction scripts:
+```
 
-Bash
-## 1. Install required Python dependencies
+## Quick Start
+
+After cloning the repository, install the required dependencies and run the data preparation and training pipeline:
+
+```bash
+# Install Python dependencies
 pip install -r requirements.txt
 
-## 2. Extract DSP rolling-window features (RMS, Peak-to-Peak, Kurtosis)
+# Extract DSP rolling-window features
+# (RMS, peak-to-peak, and kurtosis)
 python ml_pipeline/prepare_data.py
 
-## 3. Train the model and export the INT8 quantized TFLite engine
+# Train the model and export the INT8-quantized TFLite engine
 python ml_pipeline/train.py
-# Dataset Attribution & Acknowledgements
-This project utilizes the C-MAPSS Flight Data Set, provided by the NASA Prognostics Center of Excellence (PCoE).
+```
 
-Source: NASA Ames Research Center / NASA PCoE Data Set Repository
+## Dataset Attribution and Acknowledgements
 
-Citation: Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). "Damage Propagation Modeling for Aircraft Engine Run-to-Failure Simulation." In Proceedings of the 1st International Conference on Prognostics and Health Management (PHM08), Denver, CO.
+This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics Center of Excellence (PCoE).
 
-License/Access: Public domain / Open NASA Data (US Government Work).
+- **Source:** NASA Ames Research Center / NASA PCoE Data Set Repository
+- **Citation:** Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). “Damage Propagation Modeling for Aircraft Engine Run-to-Failure Simulation.” In *Proceedings of the 1st International Conference on Prognostics and Health Management*.
+- **License/access:** Public domain / Open NASA Data (U.S. Government work)
 
-Disclaimer: This repository is an independent open-source software project created solely for educational and portfolio demonstration purposes. It is not officially endorsed by, affiliated with, or supported by NASA.
-
-## System Architecture
-- **Firmware:** C++17, Bare-Metal ARM Cortex-M (QEMU)
-- **ML Inference:** TensorFlow Lite for Microcontrollers (TFLM)
-- **Data & Dashboard:** Python, Streamlit, Polars/Pandas
+> **Disclaimer:** This repository is an independent open-source software project created solely for educational and portfolio demonstration purposes. It is not officially endorsed by, affiliated with, or sponsored by NASA or any other organization referenced in this README.
