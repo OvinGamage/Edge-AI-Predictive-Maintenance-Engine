@@ -26,3 +26,8 @@ venv/
 # OS Generated Files
 .DS_Store
 Thumbs.db
+# Ignore heavy raw dataset files and processed outputs
+ml_pipeline/data/*.txt
+ml_pipeline/data/*.csv
+ml_pipeline/data/*.mat
+ml_pipeline/data/*.npy
