@@ -10,6 +10,27 @@
 static constexpr std::size_t kCyclesPerWindow = 10;
 static constexpr std::size_t kSensorsPerCycle = 5;
 static constexpr std::size_t kWindowSamples = kCyclesPerWindow * kSensorsPerCycle;
+static constexpr std::uint32_t kCyclePeriodMs = 250;
+static constexpr std::uint32_t kCoreClockHz = 25000000;
+
+static volatile std::uint32_t& systick_register(std::uintptr_t address) {
+    return *reinterpret_cast<volatile std::uint32_t*>(address);
+}
+
+static void systick_init() {
+    systick_register(0xE000E010) = 0;
+    systick_register(0xE000E014) = kCoreClockHz / 1000 - 1;
+    systick_register(0xE000E018) = 0;
+    systick_register(0xE000E010) = 0x5;
+}
+
+static void delay_ms(std::uint32_t duration_ms) {
+    for (std::uint32_t elapsed = 0; elapsed < duration_ms; ++elapsed) {
+        systick_register(0xE000E018) = 0;
+        while ((systick_register(0xE000E010) & (1u << 16)) == 0) {
+        }
+    }
+}
 
 // First ten FD001 cycles, channels s_2, s_3, s_4, s_11, and s_12.
 static constexpr float kSimulatedSensorWindow[kCyclesPerWindow][kSensorsPerCycle] = {
@@ -40,55 +61,53 @@ int main() {
 
     // 3. Initialize DSP Data Structures
     RingBuffer<float, kWindowSamples> ring_buffer;
+    systick_init();
 
-    // Simulated sensor stream loop
     uart_send_string("[SYS] Starting Ingestion & Inference Loop...\r\n");
-    
-    // Simulate one ten-cycle window using the same sensor columns as training.
-    for (std::size_t cycle = 0; cycle < kCyclesPerWindow; ++cycle) {
+
+    std::size_t cycle = 0;
+    while (true) {
         for (std::size_t sensor = 0; sensor < kSensorsPerCycle; ++sensor) {
             ring_buffer.push(kSimulatedSensorWindow[cycle][sensor]);
         }
+        cycle = (cycle + 1) % kCyclesPerWindow;
+        delay_ms(kCyclePeriodMs);
+
+        if (ring_buffer.size() < kWindowSamples) {
+            continue;
+        }
+
+        float raw_window[kWindowSamples];
+        ring_buffer.extract_window(raw_window);
+        const SensorFeatures features =
+            DSPProcessor::extract_features(raw_window, ring_buffer.size());
+
+        const float extracted_features[3] = {
+            (features.rms - kFeatureMean[0]) / kFeatureScale[0],
+            (features.peak_to_peak - kFeatureMean[1]) / kFeatureScale[1],
+            (features.kurtosis - kFeatureMean[2]) / kFeatureScale[2]
+        };
+
+        model_runner.set_input(extracted_features);
+
+        if (!model_runner.run()) {
+            uart_send_string("[ERR] Inference execution failed!\r\n");
+            continue;
+        }
+
+        const float mse = model_runner.compute_reconstruction_mse();
+        char msg_buf[128];
+        if (mse >= THRESHOLD_CRIT) {
+            std::snprintf(msg_buf, sizeof(msg_buf),
+                          "[CRITICAL ANOMALY] MSE: %.5f | Action: Emergency Shutdown Recommended\r\n", mse);
+        } else if (mse >= THRESHOLD_WARN) {
+            std::snprintf(msg_buf, sizeof(msg_buf),
+                          "[WARNING] MSE: %.5f | Action: Inspection Required\r\n", mse);
+        } else {
+            std::snprintf(msg_buf, sizeof(msg_buf),
+                          "[OK] MSE: %.5f | Status: Normal\r\n", mse);
+        }
+
+        uart_send_string(msg_buf);
     }
-
-    float raw_window[kWindowSamples];
-    ring_buffer.extract_window(raw_window);
-    const SensorFeatures features =
-        DSPProcessor::extract_features(raw_window, ring_buffer.size());
-
-    const float extracted_features[3] = {
-        (features.rms - kFeatureMean[0]) / kFeatureScale[0],
-        (features.peak_to_peak - kFeatureMean[1]) / kFeatureScale[1],
-        (features.kurtosis - kFeatureMean[2]) / kFeatureScale[2]
-    };
-
-    // Feed standardized features to the model runner for tensor quantization.
-    model_runner.set_input(extracted_features);
-
-    // Run inference
-    if (!model_runner.run()) {
-        uart_send_string("[ERR] Inference execution failed!\r\n");
-        return -1;
-    }
-
-    // Calculate Reconstruction MSE Error
-    const float mse = model_runner.compute_reconstruction_mse();
-
-    // Anomaly decision uses thresholds calibrated during training.
-    char msg_buf[128];
-    if (mse >= THRESHOLD_CRIT) {
-        std::snprintf(msg_buf, sizeof(msg_buf),
-                      "[CRITICAL ANOMALY] MSE: %.5f | Action: Emergency Shutdown Recommended\r\n", mse);
-    } else if (mse >= THRESHOLD_WARN) {
-        std::snprintf(msg_buf, sizeof(msg_buf),
-                      "[WARNING] MSE: %.5f | Action: Inspection Required\r\n", mse);
-    } else {
-        std::snprintf(msg_buf, sizeof(msg_buf),
-                      "[OK] MSE: %.5f | Status: Normal\r\n", mse);
-    }
-
-    uart_send_string(msg_buf);
-
-    uart_send_string("[SYS] Ingestion loop completed.\r\n");
-    return 0;
 }
