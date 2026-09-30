@@ -1,6 +1,6 @@
 # Edge AI Predictive Maintenance Engine
 
-A reproducible embedded AI demo that combines a bare-metal C++17 firmware target, an offline Python data/ML pipeline, and a Streamlit telemetry dashboard. The project simulates a predictive-maintenance workflow on a QEMU-emulated ARM Cortex-M platform and is intended as a technical portfolio / proof-of-concept rather than a production deployment.
+A self-directed embedded AI proof-of-concept that combines a bare-metal C++17 firmware target, an offline Python data/ML pipeline, and a Streamlit telemetry dashboard. The project simulates a predictive-maintenance workflow on a QEMU-emulated ARM Cortex-M platform. It was built independently as a skills demonstration and is not intended to represent a production-ready system.
 
 ## Project Architecture and Tooling
 
@@ -56,6 +56,16 @@ python ml_pipeline/prepare_data.py
 python ml_pipeline/train.py
 ```
 
+The anomaly-detection thresholds used by the firmware (`THRESHOLD_WARN` / `THRESHOLD_CRIT`) are set manually based on the reconstruction-error distribution observed during training. They are not learned automatically and are not recalibrated at runtime.
+
+## Telemetry Dashboard
+
+The `dashboard/` directory contains a Streamlit application that connects to the firmware's UART output (directly over serial, or via a TCP socket when running in QEMU) and displays incoming inference events as they arrive. It is a visualization tool for locally observing firmware output during development, not a hardened or continuously monitored production telemetry service. There is no buffering, retry, or backpressure handling beyond what Streamlit and pyserial provide out of the box.
+
+## Testing
+
+The `tests/` directory contains a small set of host-side unit tests (GoogleTest) covering the ring buffer and DSP feature extraction logic in `firmware_core`. These tests run on the host machine and are skipped entirely when cross-compiling for the ARM target (see `tests/CMakeLists.txt`). They validate specific algorithmic building blocks, not full firmware behavior, end-to-end inference, or QEMU runtime integration. CI additionally runs a `clang-format` check against the firmware source.
+
 ## Dataset Attribution and Acknowledgements
 
 This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics Center of Excellence (PCoE).
@@ -65,6 +75,10 @@ This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics 
 - **License/access:** Public domain / Open NASA Data (U.S. Government work)
 
 > **Disclaimer:** This repository is an independent open-source software project created solely for educational and portfolio demonstration purposes. It is not officially endorsed by, affiliated with, or maintained by NASA or any other organization referenced in the dataset materials.
+
+## About This Project
+
+This repository was built independently by a self-taught developer as a demonstration of applied skills across embedded systems, machine learning deployment, and software tooling. The author has no formal degree in the field; background includes self-study and Coursera certificate coursework. The project is scoped as a proof of concept, and no claim is made that it reflects production-hardened engineering practice — reaching that bar would require a real production environment, real operating constraints, and real-world validation that a solo, self-directed project cannot fully replicate.
 
 ## AI Transparency & Architectural Ownership Disclaimer
 
@@ -79,7 +93,7 @@ The project author was responsible for the core technical direction, including:
 - sizing the static Tensor Arena memory budget;
 - validating Cortex-M behavior under QEMU;
 - designing the telemetry serialization format and checksum framing;
-- selecting the DSP feature set and anomaly-detection approach;
+- selecting the DSP feature set and manually setting the anomaly-detection thresholds;
 - managing the build, cross-compilation, Docker, and CI setup.
 
 ### AI-Assisted Implementation Support
@@ -94,4 +108,4 @@ AI coding tools were used primarily to speed up repetitive and mechanical tasks 
 
 ### Review and Accountability
 
-All substantive algorithms, protocol definitions, model quantization steps, and build configuration changes were reviewed and approved by the project author before inclusion. AI assistance was used as a productivity aid, not as an autonomous decision-maker for the project’s technical direction.
+All substantive algorithms, protocol definitions, model quantization steps, and build configuration changes were reviewed and approved by the project author before inclusion. AI assistance was used as a productivity aid, not as an autonomous decision-maker for the project's technical direction.
