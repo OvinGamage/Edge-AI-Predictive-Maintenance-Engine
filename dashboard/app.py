@@ -1,9 +1,84 @@
+import hashlib
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+
+def _acquire_dashboard_lock():
+    lock_name = hashlib.sha256(str(Path(__file__).resolve()).encode()).hexdigest()[:16]
+    lock_file = open(Path(tempfile.gettempdir()) / f"edge-ai-dashboard-{lock_name}.lock", "a+b")
+    lock_file.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, BlockingIOError):
+        lock_file.close()
+        return None
+    return lock_file
+
+
+def _release_dashboard_lock(lock_file) -> None:
+    try:
+        lock_file.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    finally:
+        lock_file.close()
+
+
+if (
+    __name__ == "__main__"
+    and os.environ.get("EDGE_AI_STREAMLIT_CHILD") != "1"
+    and get_script_run_ctx(suppress_warning=True) is None
+):
+    lock_file = _acquire_dashboard_lock()
+    if lock_file is None:
+        print("The dashboard is already running.")
+        raise SystemExit(1)
+    try:
+        answer = input("Press y to start the dashboard: ").strip().lower()
+        if answer != "y":
+            print("Dashboard startup cancelled.")
+            raise SystemExit(0)
+        child_environment = os.environ.copy()
+        child_environment["EDGE_AI_STREAMLIT_CHILD"] = "1"
+        _release_dashboard_lock(lock_file)
+        lock_file = None
+        raise SystemExit(
+            subprocess.call(
+                [sys.executable, "-m", "streamlit", "run", str(Path(__file__).resolve())],
+                env=child_environment,
+            )
+        )
+    finally:
+        if lock_file is not None:
+            _release_dashboard_lock(lock_file)
+
+import atexit
+import shutil
+import threading
+import time
 from datetime import datetime
 from typing import TypedDict
 
 import pandas as pd
 import serial
-import streamlit as st
 
 from uart_bridge import parse_line
 
@@ -21,10 +96,151 @@ st.set_page_config(
     layout="wide",
 )
 
+
+@st.cache_resource
+def _streamlit_instance_lock():
+    return _acquire_dashboard_lock()
+
+
+_dashboard_lock = _streamlit_instance_lock()
+if _dashboard_lock is None:
+    st.error("Another dashboard instance is already running. Close it before starting a new one.")
+    st.stop()
+
 st.session_state.setdefault("uart", None)
 st.session_state.setdefault("events", [])
 st.session_state.setdefault("connection_error", "")
 st.session_state.setdefault("auto_connect_enabled", True)
+
+
+def _docker_info(docker: str) -> bool:
+    try:
+        result = subprocess.run(
+            [docker, "info"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _start_firmware_backend(state: dict[str, str]) -> None:
+    project_root = Path(__file__).resolve().parent.parent
+    firmware_path = project_root / "build" / "clang-cmake" / "firmware" / "firmware_app.elf"
+    docker = shutil.which("docker")
+    if docker is None:
+        state["error"] = "Docker CLI was not found. Install Docker Desktop and add Docker to PATH."
+        return
+    if not firmware_path.is_file():
+        state["error"] = f"Firmware ELF not found: {firmware_path}"
+        return
+
+    try:
+        if not _docker_info(docker):
+            state["message"] = "Starting Docker Desktop..."
+            subprocess.run(
+                [docker, "desktop", "start", "--detach", "--timeout", "120"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+            )
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline and not _docker_info(docker):
+                time.sleep(2)
+            if not _docker_info(docker):
+                raise RuntimeError("Docker Desktop did not become ready within 120 seconds.")
+
+        running = subprocess.run(
+            [docker, "ps", "--filter", "publish=5555", "--format", "{{.ID}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+        if running:
+            state["message"] = "Firmware simulator is already running; connecting to UART."
+            return
+
+        state["message"] = "Starting firmware simulator..."
+        process = subprocess.Popen(
+            [
+                docker,
+                "compose",
+                "run",
+                "--rm",
+                "-p",
+                "127.0.0.1:5555:5555",
+                "dev-environment",
+                "qemu-system-arm",
+                "-M",
+                "mps2-an385",
+                "-cpu",
+                "cortex-m3",
+                "-kernel",
+                "build/clang-cmake/firmware/firmware_app.elf",
+                "-display",
+                "none",
+                "-monitor",
+                "none",
+                "-chardev",
+                "socket,id=uart0,host=0.0.0.0,port=5555,server=on,wait=on",
+                "-serial",
+                "chardev:uart0",
+            ],
+            cwd=project_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError("The firmware simulator exited while starting.")
+            running = subprocess.run(
+                [docker, "ps", "--filter", "publish=5555", "--format", "{{.ID}}"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()
+            if running:
+                state["container_id"] = running.splitlines()[0]
+                state["docker"] = docker
+                state["message"] = "Firmware simulator is ready; connecting to UART."
+                return
+            time.sleep(1)
+        raise RuntimeError("The firmware simulator did not start within 180 seconds.")
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+        state["error"] = str(error)
+
+
+@st.cache_resource
+def start_firmware_backend() -> dict[str, str]:
+    state: dict[str, str] = {"message": "Preparing firmware simulator...", "error": ""}
+    threading.Thread(target=_start_firmware_backend, args=(state,), daemon=True).start()
+
+    def stop_owned_container() -> None:
+        container_id = state.get("container_id")
+        docker = state.get("docker")
+        if container_id and docker:
+            subprocess.run(
+                [docker, "stop", container_id],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=15,
+            )
+
+    atexit.register(stop_owned_container)
+    return state
+
+
+backend_state = start_firmware_backend()
 
 
 def connect_uart(endpoint: str, baud_rate: int) -> None:
@@ -225,8 +441,14 @@ def render_advanced(events: list[TelemetryEvent], latest: TelemetryEvent | None)
 
 @st.fragment(run_every=0.5)
 def telemetry_view(mode: str, endpoint: str, baud_rate: int) -> None:
+    if backend_state["error"]:
+        st.warning(f"Simulator: {backend_state['error']}")
+    else:
+        st.caption(f"Simulator: {backend_state['message']}")
     if st.session_state.uart is None and st.session_state.auto_connect_enabled:
         connect_uart(endpoint, baud_rate)
+    if st.session_state.connection_error:
+        st.warning(st.session_state.connection_error)
     read_uart_events()
     events: list[TelemetryEvent] = st.session_state.events
     latest = events[-1] if events else None
