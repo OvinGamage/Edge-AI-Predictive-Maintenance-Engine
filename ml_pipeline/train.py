@@ -36,7 +36,7 @@ def load_healthy_data():
 
     X_train, X_test = train_test_split(X_healthy, test_size=0.2, random_state=42)
 
-    return X_train, X_test, X_anomalous
+    return X_train, X_test, X_anomalous, scaler.mean_, scaler.scale_
 
 
 def build_autoencoder():
@@ -119,10 +119,12 @@ def calculate_int8_thresholds(tflite_model, X_calibration):
     return mse_95, mse_99_5
 
 
-def export_c_header(tflite_model, mse_95, mse_99_5):
+def export_c_header(tflite_model, mse_95, mse_99_5, feature_mean, feature_scale):
     """Converts the TFLite model and thresholds into a static C++ header."""
     hex_array = ", ".join([f"0x{b:02x}" for b in tflite_model])
     array_len = len(tflite_model)
+    mean_array = ", ".join(f"{float(value):.9g}f" for value in feature_mean)
+    scale_array = ", ".join(f"{float(value):.9g}f" for value in feature_scale)
 
     os.makedirs(os.path.dirname(HEADER_OUTPUT_PATH), exist_ok=True)
 
@@ -134,6 +136,9 @@ def export_c_header(tflite_model, mse_95, mse_99_5):
 
 #define THRESHOLD_WARN {mse_95:.9g}f
 #define THRESHOLD_CRIT {mse_99_5:.9g}f
+
+inline constexpr float kFeatureMean[3] = {{{mean_array}}};
+inline constexpr float kFeatureScale[3] = {{{scale_array}}};
 
 alignas(16) const unsigned char g_model[] = {{
     {hex_array}
@@ -152,7 +157,7 @@ const size_t g_model_len = {array_len};
 
 def main():
     print("Loading healthy training baseline...")
-    X_train, X_test, X_anomalous = load_healthy_data()
+    X_train, X_test, X_anomalous, feature_mean, feature_scale = load_healthy_data()
 
     print("Building and training Autoencoder...")
     autoencoder = build_autoencoder()
@@ -176,15 +181,13 @@ def main():
     mse_95, mse_99_5 = calculate_int8_thresholds(tflite_model, X_test)
 
     print("\nExporting model and thresholds to static C++ header...")
-    export_c_header(tflite_model, mse_95, mse_99_5)  
-    
-   
-
-    print("\nQuantizing Autoencoder to INT8...")
-    tflite_model = convert_to_int8_tflite(autoencoder, X_train)
-
-    print("\nExporting static C++ header...")
-    export_c_header(tflite_model, mse_95, mse_99_5)
+    export_c_header(
+        tflite_model,
+        mse_95,
+        mse_99_5,
+        feature_mean,
+        feature_scale,
+    )
 def cross_validate_cmapss(df, feature_cols, target_col='RUL', n_splits=5):
     """
     Performs Group K-Fold Cross Validation keeping unit_numbers intact within folds.

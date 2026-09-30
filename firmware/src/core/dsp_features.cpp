@@ -32,7 +32,8 @@ public:
     // Quantizes normalized float to int8_t using TFLite scale and zero point
     int8_t quantize_sample(float value, float scale, int32_t zero_point) {
         int32_t qval = static_cast<int32_t>(std::round(value / scale)) + zero_point;
-        return static_cast<int8_t>(std::clamp(qval, -128, 127));
+        return static_cast<int8_t>(
+            std::clamp<std::int32_t>(qval, -128, 127));
     }
 
     // Dequantizes int8_t model output back to float for MSE loss calculation

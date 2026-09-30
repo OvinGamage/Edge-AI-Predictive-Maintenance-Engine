@@ -39,6 +39,18 @@ SECTIONS
         _etext = .;          /* Global symbol at end of code */
     } > FLASH
 
+    .ARM.extab :
+    {
+        *(.ARM.extab* .gnu.linkonce.armextab.*)
+    } > FLASH
+
+    .ARM.exidx :
+    {
+        __exidx_start = .;
+        *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+        __exidx_end = .;
+    } > FLASH
+
     /* Read-only data (Constants, Strings, TFLite Model Array) */
     .rodata :
     {
@@ -109,12 +121,4 @@ SECTIONS
         . = . + _Min_Stack_Size;
         . = ALIGN(8);
     } > RAM
-
-    /* Remove debugging information from standard C libraries */
-    /DISCARD/ :
-    {
-        libc.a ( * )
-        libm.a ( * )
-        libgcc.a ( * )
-    }
 }

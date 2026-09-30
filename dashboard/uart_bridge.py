@@ -33,12 +33,15 @@ def parse_line(line: str) -> dict[str, str | float | None] | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Read firmware UART telemetry.")
-    parser.add_argument("port", help="Serial port, e.g. COM5 or /dev/ttyUSB0")
+    parser.add_argument(
+        "port",
+        help="Serial port or pySerial URL, e.g. COM5 or socket://127.0.0.1:5555",
+    )
     parser.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args()
 
     try:
-        with serial.Serial(args.port, args.baud, timeout=1) as uart:
+        with serial.serial_for_url(args.port, args.baud, timeout=1) as uart:
             print(f"Listening on {args.port} at {args.baud} baud")
             while True:
                 raw_line = uart.readline()

@@ -66,7 +66,10 @@ public:
 
         // Guard against division by zero for flat/DC signals
         if (variance > 1e-7f) {
-            features.kurtosis = (fourth_moment_sum / static_cast<float>(window_size)) / (variance * variance);
+            features.kurtosis =
+                (fourth_moment_sum / static_cast<float>(window_size)) /
+                    (variance * variance) -
+                3.0f;
         } else {
             features.kurtosis = 0.0f;
         }

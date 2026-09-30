@@ -22,7 +22,9 @@ def extract_window_features(window):
 
     rms = np.sqrt(np.mean(signal**2))
     peak_to_peak = np.ptp(signal)
-    kurt = kurtosis(signal)
+    kurt = kurtosis(signal, fisher=True, bias=True)
+    if not np.isfinite(kurt):
+        kurt = 0.0
 
     return pd.Series(
         [rms, peak_to_peak, kurt],

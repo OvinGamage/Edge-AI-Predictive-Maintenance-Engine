@@ -7,28 +7,16 @@ This guide covers the full setup and build flow for the Machine-Learning project
 ## 1. System Requirements
 
 Before beginning, make sure the host machine has:
-
 - Git 2.25+
 - CMake 3.15+
-- A C++17 compiler
-  - Linux: `gcc` / `g++`
-  - macOS: Xcode Command Line Tools
-  - Windows: MSYS2 MinGW-w64 or Visual Studio 2019+
-- Python 3.9+
-- `pip`
-- Network access for fetching external dependencies and GoogleTest on first configuration
-- ARM toolchain for cross-builds:
-  - `arm-none-eabi-gcc`
-  - `arm-none-eabi-g++`
-  - `objcopy`
-  - `objdump`
-  - `size`
+- Docker Desktop with the Linux engine enabled
+- Python 3.9+ and `pip`
+- Network access to fetch the Docker image and Python dependencies
 
----
 
 ## 2. Clone the Repository
 
-Use a recursive clone so submodules are fetched automatically:
+Use a recursive clone so the TensorFlow Lite Micro submodule is fetched automatically:
 
 ```bash
 git clone --recursive <repository-url>
@@ -43,45 +31,11 @@ git submodule update --init --recursive
 
 ---
 
-## 3. Prepare TensorFlow Lite Micro Dependencies
+## 3. TensorFlow Lite Micro Dependencies
 
-The firmware relies on TensorFlow Lite Micro components and supporting headers from third-party libraries. These must be populated before building.
-
-### Linux / macOS
-
-```bash
-cd firmware/lib/tflite-micro
-
-mkdir -p third_party/flatbuffers/include third_party/gemmlowp third_party/ruy
-
-git clone --depth 1 https://github.com/google/flatbuffers.git third_party/flatbuffers_repo
-cp -r third_party/flatbuffers_repo/include/flatbuffers third_party/flatbuffers/include/
-
-git clone --depth 1 https://github.com/google/gemmlowp.git third_party/gemmlowp_repo
-cp -r third_party/gemmlowp_repo/fixedpoint third_party/gemmlowp/
-cp -r third_party/gemmlowp_repo/internal third_party/gemmlowp/
-
-rm -rf third_party/flatbuffers_repo third_party/gemmlowp_repo
-cd ../../..
-```
-
-### Windows (PowerShell)
-
-```powershell
-cd firmware/lib/tflite-micro
-
-New-Item -ItemType Directory -Force -Path "third_party/flatbuffers/include", "third_party/gemmlowp", "third_party/ruy"
-
-git clone --depth 1 https://github.com/google/flatbuffers.git third_party/flatbuffers_repo
-Copy-Item -Recurse -Force "third_party/flatbuffers_repo/include/flatbuffers" "third_party/flatbuffers/include/"
-
-git clone --depth 1 https://github.com/google/gemmlowp.git third_party/gemmlowp_repo
-Copy-Item -Recurse -Force "third_party/gemmlowp_repo/fixedpoint" "third_party/gemmlowp/"
-Copy-Item -Recurse -Force "third_party/gemmlowp_repo/internal" "third_party/gemmlowp/"
-
-Remove-Item -Recurse -Force "third_party/flatbuffers_repo", "third_party/gemmlowp_repo"
-cd ../../..
-```
+The ARM Docker image fetches the FlatBuffers and Ruy revisions required by the
+checked-out TensorFlow Lite Micro source. Do not manually copy dependencies into
+`firmware/lib/tflite-micro`; keep that submodule unchanged.
 
 ---
 
@@ -117,20 +71,35 @@ This workflow builds the host library and the GoogleTest-based unit tests.
 
 ---
 
-## 6. ARM Build: Cross-Compilation
+## 6. ARM Build: Clang Cross-Compilation
 
-To build the bare-metal target, configure CMake with the ARM toolchain file:
+Build the Docker image, then configure and build the bare-metal target through CMake:
 
-```bash
-cmake -B build/arm -S . -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
-cmake --build build/arm
+```powershell
+docker compose build
+docker compose run --rm dev-environment cmake -S . -B build/clang-cmake -DCMAKE_TOOLCHAIN_FILE=cmake/clang-arm-none-eabi.cmake
+docker compose run --rm dev-environment cmake --build build/clang-cmake --parallel 4
 ```
 
-After the build completes, `arm-none-eabi-size` prints the final memory footprint for the firmware image.
+The generated firmware ELF is `build/clang-cmake/firmware/firmware_app.elf`.
 
 ---
 
-## 7. Running the Tests
+## 7. Run in QEMU
+
+In one PowerShell terminal, launch the containerized MPS2-AN385 emulator:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_qemu.ps1
+```
+
+In another terminal, connect the telemetry bridge:
+
+```powershell
+python dashboard/uart_bridge.py socket://127.0.0.1:5555
+```
+
+## 8. Running the Tests
 
 From the host build directory:
 
@@ -138,12 +107,11 @@ From the host build directory:
 cd build/host
 ctest --output-on-failure
 ```
-
 This validates DSP features, ring-buffer behavior, and host-side inference logic.
 
 ---
 
-## 8. Build Notes and Constraints
+## 9. Build Notes and Constraints
 
 ### Host-only unit tests
 
@@ -159,14 +127,14 @@ The ARM toolchain file sets `CMAKE_TRY_COMPILE_TARGET_TYPE` to `STATIC_LIBRARY` 
 
 ---
 
-## 9. Customizing the Build Setup
+## 10. Customizing the Build Setup
 
 ### Change CPU and hardware flags
 
-File: `cmake/arm-none-eabi.cmake`
+File: `cmake/clang-arm-none-eabi.cmake`
 
 ```cmake
-set(ARM_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard")
+set(ARM_CLANG_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard")
 ```
 
 ### Add new C++ sources
@@ -204,7 +172,7 @@ FetchContent_Declare(
 
 ---
 
-## 10. Common Troubleshooting
+## 11. Common Troubleshooting
 
 ### Missing TensorFlow Lite headers
 
@@ -216,7 +184,7 @@ Check for missing source files and confirm the repository was cloned with submod
 
 ### ARM build fails
 
-Check the toolchain installation and confirm the ARM binaries are on `PATH`.
+Check that Docker Desktop is running and the image contains Clang/LLD.
 
 ---
 

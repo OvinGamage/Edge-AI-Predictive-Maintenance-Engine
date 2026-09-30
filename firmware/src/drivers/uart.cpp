@@ -1,34 +1,59 @@
-#include <cstdio>
-#include <cstdarg>
-#include <cstring>
 #include <cstdint>
-// Platform-independent UART interface wrapper
-class UARTLogger {
-private:
-    std::uint32_t baud_rate;
+#include "drivers/uart.hpp"
 
-public:
-    UARTLogger(uint32_t baud = 115200) : baud_rate(baud) {}
+namespace {
 
-    void init() {
-        // Platform-specific initialization (e.g., Serial.begin(baud) or HAL_UART_Init)
+constexpr std::uintptr_t kUart0Base = 0x40004000u;
+constexpr std::uintptr_t kDataOffset = 0x00u;
+constexpr std::uintptr_t kStateOffset = 0x04u;
+constexpr std::uintptr_t kControlOffset = 0x08u;
+constexpr std::uintptr_t kBaudDivOffset = 0x10u;
+constexpr std::uint32_t kTxFull = 1u << 0;
+constexpr std::uint32_t kRxFull = 1u << 1;
+constexpr std::uint32_t kTxEnable = 1u << 0;
+constexpr std::uint32_t kRxEnable = 1u << 1;
+constexpr std::uint32_t kPeripheralClockHz = 25000000u;
+constexpr std::uint32_t kBaudRate = 115200u;
+
+volatile std::uint32_t& uart_register(std::uintptr_t offset) {
+    return *reinterpret_cast<volatile std::uint32_t*>(kUart0Base + offset);
+}
+
+}  // namespace
+
+extern "C" void uart_init(void) {
+    uart_register(kControlOffset) = 0;
+    uart_register(kBaudDivOffset) = kPeripheralClockHz / kBaudRate;
+    uart_register(kControlOffset) = kTxEnable | kRxEnable;
+}
+
+extern "C" void uart_send_char(char c) {
+    while ((uart_register(kStateOffset) & kTxFull) != 0) {
     }
+    uart_register(kDataOffset) = static_cast<std::uint8_t>(c);
+}
 
-    void print(const char* str) {
-        // Replace with platform write call: e.g., Serial.print(str) or HAL_UART_Transmit(...)
-        printf("%s", str);
+extern "C" void uart_send_string(const char* str) {
+    if (str == nullptr) {
+        return;
     }
+    while (*str != '\0') {
+        uart_send_char(*str++);
+    }
+}
 
-    void printf_log(const char* format, ...) {
-        char buffer[128];
-        va_list args;
-        va_start(args, format);
-        vsnprintf(buffer, sizeof(buffer), format, args);
-        va_end(args);
-        print(buffer);
+extern "C" void uart_send_bytes(const std::uint8_t* data, std::size_t length) {
+    if (data == nullptr) {
+        return;
     }
+    for (std::size_t i = 0; i < length; ++i) {
+        uart_send_char(static_cast<char>(data[i]));
+    }
+}
 
-    void log_status(const char* tag, float mse, int status_code) {
-        printf_log("[%s] Reconstruction MSE: %.5f | Status Code: %d\r\n", tag, mse, status_code);
+extern "C" int uart_read_char(void) {
+    if ((uart_register(kStateOffset) & kRxFull) == 0) {
+        return -1;
     }
-};
+    return static_cast<int>(uart_register(kDataOffset) & 0xFFu);
+}

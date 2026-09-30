@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.15...3.28)
 
 # 2. Declare top-level project name and languages used
-project(EdgePredictiveMaintenance LANGUAGES CXX C)
+project(EdgePredictiveMaintenance LANGUAGES CXX C ASM)
 
 # 3. Enforce global C++ standard across all targets
 set(CMAKE_CXX_STANDARD 17)

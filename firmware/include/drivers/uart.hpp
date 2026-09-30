@@ -34,7 +34,7 @@ void uart_send_bytes(const uint8_t* data, size_t length);
 
 /**
  * @brief Read a single character from UART (blocking or non-blocking depending on implementation).
- * @return Character received, or negative value on timeout/error.
+ * @return Character received, or -1 immediately when no character is available.
  */
 int uart_read_char(void);
 

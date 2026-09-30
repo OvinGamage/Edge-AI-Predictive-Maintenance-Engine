@@ -86,6 +86,6 @@ void ModelRunner::set_input(const float input[3]) {
         const int32_t quantized =
             static_cast<int32_t>(std::round(input[i] / scale)) + zero_point;
         input_tensor->data.int8[i] = static_cast<int8_t>(
-            std::clamp(quantized, -128, 127));
+            std::clamp<int32_t>(quantized, -128, 127));
     }
 }

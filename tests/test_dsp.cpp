@@ -46,8 +46,8 @@ TEST(DSPFeaturesTest, SineWaveKnownRMSAndP2P) {
     // Peak-to-Peak should be 2 * Amplitude = 4.0
     EXPECT_NEAR(features.peak_to_peak, 2.0f * amplitude, 1e-2f);
 
-    // Ideal Kurtosis for a pure sine wave is 1.5
-    EXPECT_NEAR(features.kurtosis, 1.5f, 1e-1f);
+    // Fisher excess kurtosis for a pure sine wave is -1.5.
+    EXPECT_NEAR(features.kurtosis, -1.5f, 1e-1f);
 }
 
 TEST(DSPFeaturesTest, ImpulsePeakKurtosisSpike) {
