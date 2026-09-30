@@ -11,7 +11,7 @@ The project is designed to be reproducible and isolated. The complete build ecos
 - QEMU ARM simulation
 - Multi-stage Docker containers
 
-The build infrastructure and containerization are provided for reviewer and user convenience. The core technical focus of this repository is the low-level bare-metal C++17 firmware and its edge machine-learning inference workflow.
+The build infrastructure and containerization are provided for reviewer and user convenience. The core technical focus of this repository is the low-level bare-metal C++17 firmware and its edge machine learning pipeline.
 
 ## System Architecture
 
@@ -23,7 +23,7 @@ The build infrastructure and containerization are provided for reviewer and user
 
 ## Dataset Setup
 
-This project uses the NASA C-MAPSS (Commercial Modular Aero-Propulsion System Simulation) Flight Data Set, specifically the FD001 subset. Because of repository size constraints, the raw data files are not tracked in Git.
+This project uses the NASA C-MAPSS (Commercial Modular Aero-Propulsion System Simulation) Flight Data Set, specifically the FD001 subset. Because of repository size constraints, the raw data files are not included in the repository.
 
 ### 1. Download the dataset
 
@@ -61,7 +61,37 @@ python ml_pipeline/train.py
 This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics Center of Excellence (PCoE).
 
 - **Source:** NASA Ames Research Center / NASA PCoE Data Set Repository
-- **Citation:** Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). “Damage Propagation Modeling for Aircraft Engine Run-to-Failure Simulation.” In *Proceedings of the 1st International Conference on Prognostics and Health Management*.
+- **Citation:** Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). “Damage Propagation Modeling for Aircraft Engine Run-to-Failure Simulation.” In *Proceedings of the 1st International Conference on Prognostics and Health Management (PHM 2008)*.
 - **License/access:** Public domain / Open NASA Data (U.S. Government work)
 
-> **Disclaimer:** This repository is an independent open-source software project created solely for educational and portfolio demonstration purposes. It is not officially endorsed by, affiliated with, or sponsored by NASA or any other organization referenced in this README.
+> **Disclaimer:** This repository is an independent open-source software project created solely for educational and portfolio demonstration purposes. It is not officially endorsed by, affiliated with, or maintained by NASA or any other organization referenced in the dataset materials.
+
+## AI Transparency & Architectural Ownership Disclaimer
+
+This repository was developed using a systems-architect-led workflow with AI assistance used primarily for implementation acceleration and boilerplate generation. The underlying architecture, constraints, and validation strategy were defined and reviewed by the project author.
+
+### Architectural Ownership and Strategic Engineering
+
+The developer was responsible for the core engineering direction, including:
+
+- defining bare-metal C++17 execution constraints;
+- establishing zero-dynamic-allocation boundaries (`malloc`/`new`);
+- sizing static Tensor Arena memory budgets;
+- validating ARM Cortex-M behavior through QEMU simulation;
+- designing the binary serialization contract, including memory-aligned telemetry structs, additive checksum checks, and frame synchronization using `0xDEADBEEF`;
+- selecting the DSP feature set and anomaly threshold strategy;
+- managing the build, cross-compilation, Docker, and CI integration.
+
+### Automated Code Generation and Boilerplate Support
+
+Generative AI tools, including GitHub Copilot and other LLM-based assistants, were used to accelerate repetitive implementation tasks under human oversight. Typical assisted tasks included:
+
+- repetitive C++ class and template scaffolding;
+- CMake target setup and build-file boilerplate;
+- Python parsing and telemetry-processing loops;
+- initial Streamlit UI layout and documentation drafting;
+- shell, Docker, and QEMU command generation for local development workflows.
+
+### Verification and Accountability
+
+AI assistance was limited to syntax acceleration, scaffolding, and mechanical drafting. All critical algorithms, binary protocol definitions, ML quantization flows, configuration changes, and build settings were reviewed, tested, and validated by the project author prior to inclusion.
