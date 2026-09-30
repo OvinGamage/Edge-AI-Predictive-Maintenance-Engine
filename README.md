@@ -1,17 +1,17 @@
 # Edge AI Predictive Maintenance Engine
 
-An end-to-end bare-metal C++ edge inference engine running on a QEMU-simulated ARM Cortex-M architecture, with real-time Python telemetry analytics.
+A reproducible embedded AI demo that combines a bare-metal C++17 firmware target, an offline Python data/ML pipeline, and a Streamlit telemetry dashboard. The project simulates a predictive-maintenance workflow on a QEMU-emulated ARM Cortex-M platform and is intended as a technical portfolio / proof-of-concept rather than a production deployment.
 
 ## Project Architecture and Tooling
 
-The project is designed to be reproducible and isolated. The complete build ecosystem is pre-configured, including:
+The repository includes the build and runtime pieces needed to reproduce the demo environment, including:
 
 - CMake toolchains
 - Cross-compilers
 - QEMU ARM simulation
 - Multi-stage Docker containers
 
-The build infrastructure and containerization are provided for reviewer and user convenience. The core technical focus of this repository is the low-level bare-metal C++17 firmware and its edge machine learning pipeline.
+The core technical focus is the low-level bare-metal C++17 firmware and the edge ML pipeline that produces the model artifacts used by the firmware.
 
 ## System Architecture
 
