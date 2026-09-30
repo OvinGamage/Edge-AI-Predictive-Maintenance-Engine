@@ -24,7 +24,7 @@ st.set_page_config(
 st.session_state.setdefault("uart", None)
 st.session_state.setdefault("events", [])
 st.session_state.setdefault("connection_error", "")
-st.session_state.setdefault("auto_connect_attempted", False)
+st.session_state.setdefault("auto_connect_enabled", True)
 
 
 def connect_uart(endpoint: str, baud_rate: int) -> None:
@@ -57,15 +57,12 @@ with st.sidebar:
     with st.expander("Connection settings"):
         baud_rate = st.number_input("Baud rate", min_value=1200, value=115200, step=1200)
 
-    if not st.session_state.auto_connect_attempted:
-        st.session_state.auto_connect_attempted = True
-        connect_uart(endpoint, int(baud_rate))
-
     connect_col, disconnect_col = st.columns(2)
     connect = connect_col.button("Connect", use_container_width=True)
     disconnect = disconnect_col.button("Disconnect", use_container_width=True)
 
     if connect:
+        st.session_state.auto_connect_enabled = True
         connect_uart(endpoint, int(baud_rate))
 
     if disconnect:
@@ -73,6 +70,7 @@ with st.sidebar:
         if current_uart is not None:
             current_uart.close()
         st.session_state.uart = None
+        st.session_state.auto_connect_enabled = False
 
     connected = st.session_state.uart is not None
     st.caption(f"Device: {'Connected' if connected else 'Disconnected'}")
@@ -226,7 +224,9 @@ def render_advanced(events: list[TelemetryEvent], latest: TelemetryEvent | None)
 
 
 @st.fragment(run_every=0.5)
-def telemetry_view(mode: str) -> None:
+def telemetry_view(mode: str, endpoint: str, baud_rate: int) -> None:
+    if st.session_state.uart is None and st.session_state.auto_connect_enabled:
+        connect_uart(endpoint, baud_rate)
     read_uart_events()
     events: list[TelemetryEvent] = st.session_state.events
     latest = events[-1] if events else None
@@ -236,4 +236,4 @@ def telemetry_view(mode: str) -> None:
         render_advanced(events, latest)
 
 
-telemetry_view(view_mode)
+telemetry_view(view_mode, endpoint, int(baud_rate))
