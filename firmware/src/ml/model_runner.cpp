@@ -1,5 +1,9 @@
 #include "ml/model_runner.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 bool ModelRunner::init() {
     // Register Ops needed for Dense Autoencoder
     resolver.AddFullyConnected();
@@ -65,4 +69,23 @@ float ModelRunner::compute_reconstruction_mse() const {
         mse += diff * diff;
     }
     return mse / 3.0f; // Mean squared error across 3 features
+}
+
+void ModelRunner::set_input(const float input[3]) {
+    if (input_tensor == nullptr || input_tensor->data.int8 == nullptr || input == nullptr) {
+        return;
+    }
+
+    const float scale = input_tensor->params.scale;
+    if (scale <= 0.0f) {
+        return;
+    }
+
+    const int32_t zero_point = input_tensor->params.zero_point;
+    for (int i = 0; i < 3; ++i) {
+        const int32_t quantized =
+            static_cast<int32_t>(std::round(input[i] / scale)) + zero_point;
+        input_tensor->data.int8[i] = static_cast<int8_t>(
+            std::clamp(quantized, -128, 127));
+    }
 }

@@ -24,8 +24,7 @@ int main() {
     uart_send_string("[SYS] Model Runner initialized successfully.\r\n");
 
     // 3. Initialize DSP Data Structures
-    RingBuffer ring_buffer;
-    ring_buffer_init(&ring_buffer);
+    RingBuffer<float, 3> ring_buffer;
 
     // Simulated sensor stream loop
     uart_send_string("[SYS] Starting Ingestion & Inference Loop...\r\n");
@@ -42,15 +41,24 @@ int main() {
 
         // Push new raw sample to ring buffer
         for (int i = 0; i < 3; ++i) {
-            ring_buffer_push(&ring_buffer, raw_sensor_samples[i]);
+            ring_buffer.push(raw_sensor_samples[i]);
         }
 
-        // Extract 3 normalized statistical features (e.g., Mean, Variance, RMS)
-        int8_t quantized_features[3];
-        dsp_extract_features(&ring_buffer, quantized_features);
+        // Extract the contiguous sample window and compute the features exposed
+        // by DSPProcessor in core/dsp_features.hpp.
+        float raw_window[3];
+        ring_buffer.extract_window(raw_window);
+        const SensorFeatures features =
+            DSPProcessor::extract_features(raw_window, ring_buffer.size());
 
-        // Feed features into TFLm input tensor
-        model_runner.set_input(quantized_features);
+        const float extracted_features[3] = {
+            features.rms,
+            features.peak_to_peak,
+            features.kurtosis
+        };
+
+        // Feed real-valued features to the model runner for tensor quantization.
+        model_runner.set_input(extracted_features);
 
         // Run inference
         if (!model_runner.run()) {

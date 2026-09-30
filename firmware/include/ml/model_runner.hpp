@@ -28,6 +28,7 @@ public:
 
     bool init();
     void set_input(const int8_t quantized_input[3]);
+    void set_input(const float input[3]);
     bool run();
     const int8_t* get_output() const;
     float compute_reconstruction_mse() const;
