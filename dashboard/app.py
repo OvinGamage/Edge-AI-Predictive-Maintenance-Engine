@@ -86,20 +86,20 @@ def read_uart_events() -> None:
     if not raw_line:
         return
 
-        parsed = parse_line(raw_line.decode("utf-8", errors="replace"))
-        if parsed is not None:
-            status = parsed["status"]
-            message = parsed["message"]
-            mse_value = parsed["mse"]
-            if isinstance(status, str) and isinstance(message, str):
-                mse = float(mse_value) if isinstance(mse_value, (int, float)) else None
-                event: TelemetryEvent = {
-                    "received_at": datetime.now(),
-                    "status": status,
-                    "mse": mse,
-                    "message": message,
-                }
-                st.session_state.events.append(event)
+    parsed = parse_line(raw_line.decode("utf-8", errors="replace"))
+    if parsed is not None:
+        status = parsed["status"]
+        message = parsed["message"]
+        mse_value = parsed["mse"]
+        if isinstance(status, str) and isinstance(message, str):
+            mse = float(mse_value) if isinstance(mse_value, (int, float)) else None
+            event: TelemetryEvent = {
+                "received_at": datetime.now(),
+                "status": status,
+                "mse": mse,
+                "message": message,
+            }
+            st.session_state.events.append(event)
 
     st.session_state.events = st.session_state.events[-500:]
 
