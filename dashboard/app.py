@@ -79,6 +79,7 @@ from typing import TypedDict
 
 import pandas as pd
 import serial
+from streamlit.runtime.runtime import Runtime
 
 from uart_bridge import parse_line
 
@@ -276,6 +277,8 @@ with st.sidebar:
     connect_col, disconnect_col = st.columns(2)
     connect = connect_col.button("Connect", use_container_width=True)
     disconnect = disconnect_col.button("Disconnect", use_container_width=True)
+    stop_dashboard = st.button("Stop dashboard", use_container_width=True)
+    st.caption("Before closing this window, click Stop dashboard to shut down the server.")
 
     if connect:
         st.session_state.auto_connect_enabled = True
@@ -287,6 +290,14 @@ with st.sidebar:
             current_uart.close()
         st.session_state.uart = None
         st.session_state.auto_connect_enabled = False
+
+    if stop_dashboard:
+        current_uart = st.session_state.uart
+        if current_uart is not None:
+            current_uart.close()
+            st.session_state.uart = None
+        Runtime.instance().stop()
+        st.stop()
 
     connected = st.session_state.uart is not None
     st.caption(f"Device: {'Connected' if connected else 'Disconnected'}")
