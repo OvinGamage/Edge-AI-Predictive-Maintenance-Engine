@@ -68,30 +68,30 @@ This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics 
 
 ## AI Transparency & Architectural Ownership Disclaimer
 
-This repository was developed using a systems-architect-led workflow with AI assistance used primarily for implementation acceleration and boilerplate generation. The underlying architecture, constraints, and validation strategy were defined and reviewed by the project author.
+This repository was developed with limited AI assistance for implementation acceleration and drafting support. The overall architecture, embedded-system constraints, model strategy, and validation approach were defined and reviewed by the project author.
 
-### Architectural Ownership and Strategic Engineering
+### Human-Led Engineering Decisions
 
-The developer was responsible for the core engineering direction, including:
+The project author was responsible for the core technical direction, including:
 
-- defining bare-metal C++17 execution constraints;
-- establishing zero-dynamic-allocation boundaries (`malloc`/`new`);
-- sizing static Tensor Arena memory budgets;
-- validating ARM Cortex-M behavior through QEMU simulation;
-- designing the binary serialization contract, including memory-aligned telemetry structs, additive checksum checks, and frame synchronization using `0xDEADBEEF`;
-- selecting the DSP feature set and anomaly threshold strategy;
-- managing the build, cross-compilation, Docker, and CI integration.
+- defining the bare-metal C++17 execution model;
+- establishing the no-dynamic-allocation constraint (`malloc`/`new`);
+- sizing the static Tensor Arena memory budget;
+- validating Cortex-M behavior under QEMU;
+- designing the telemetry serialization format and checksum framing;
+- selecting the DSP feature set and anomaly-detection approach;
+- managing the build, cross-compilation, Docker, and CI setup.
 
-### Automated Code Generation and Boilerplate Support
+### AI-Assisted Implementation Support
 
-Generative AI tools, including GitHub Copilot and other LLM-based assistants, were used to accelerate repetitive implementation tasks under human oversight. Typical assisted tasks included:
+AI coding tools were used primarily to speed up repetitive and mechanical tasks under human supervision. Examples of supported work include:
 
-- repetitive C++ class and template scaffolding;
-- CMake target setup and build-file boilerplate;
-- Python parsing and telemetry-processing loops;
-- initial Streamlit UI layout and documentation drafting;
+- C++ class and template scaffolding;
+- CMake target and build-file boilerplate;
+- Python data-processing and telemetry-parsing loops;
+- Streamlit UI scaffolding and documentation drafting;
 - shell, Docker, and QEMU command generation for local development workflows.
 
-### Verification and Accountability
+### Review and Accountability
 
-AI assistance was limited to syntax acceleration, scaffolding, and mechanical drafting. All critical algorithms, binary protocol definitions, ML quantization flows, configuration changes, and build settings were reviewed, tested, and validated by the project author prior to inclusion.
+All substantive algorithms, protocol definitions, model quantization steps, and build configuration changes were reviewed and approved by the project author before inclusion. AI assistance was used as a productivity aid, not as an autonomous decision-maker for the project’s technical direction.
