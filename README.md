@@ -68,22 +68,30 @@ This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics 
 
 ## AI Transparency & Architectural Ownership Disclaimer
 
-This repository was engineered following a Systems Architect & AI Execution Engine workflow. To ensure complete transparency regarding open-source contribution integrity, code auditing, and AI usage, the breakdown of system development is detailed below:
+This repository was developed using a systems-architect-led workflow with AI assistance used primarily for implementation acceleration and boilerplate generation. The underlying architecture, constraints, and validation strategy were defined and reviewed by the project author.
 
-### 1. Architectural Ownership & Strategic Engineering (Human Lead: ~60% Mental Labor)
+### Architectural Ownership and Strategic Engineering
 
-All high-level engineering decisions, target platform constraints, and system integration contracts were designed, directed, and verified by the developer:
+The developer was responsible for the core engineering direction, including:
 
-- **System Boundaries & Constraints:** Defined bare-metal C++17 execution rules, zero dynamic memory allocation (`malloc`/`new`) bounds, static Tensor Arena memory budgeting, and ARM Cortex-M target profiling via QEMU simulation.
-- **Protocol & Interface Design:** Authored the binary serialization contract—including memory-aligned (`#pragma pack(1)`) 29-byte telemetry structs, additive checksum safety checks, and header frame alignment (`0xDEADBEEF`) for serial transport over virtual UART.
-- **Machine Learning & DSP Strategy:** Selected the time-domain feature set (RMS, Peak-to-Peak, Kurtosis), defined the INT8 Autoencoder anomaly threshold boundaries (0.045 Warning / 0.090 Critical), and established the dual-mode user experience strategy for non-technical operators vs. diagnostic engineers.
-- **Build System & Toolchain Triage:** Managed multi-target CMake dependency graphs, Docker compilation environments, cross-compilation toolchain flags (`arm-none-eabi-gcc`), and GitHub Actions CI regression pipelines.
+- defining bare-metal C++17 execution constraints;
+- establishing zero-dynamic-allocation boundaries (`malloc`/`new`);
+- sizing static Tensor Arena memory budgets;
+- validating ARM Cortex-M behavior through QEMU simulation;
+- designing the binary serialization contract, including memory-aligned telemetry structs, additive checksum checks, and frame synchronization using `0xDEADBEEF`;
+- selecting the DSP feature set and anomaly threshold strategy;
+- managing the build, cross-compilation, Docker, and CI integration.
 
-### 2. Automated Code Generation & Boilerplate Execution (AI Assistance: ~85% Grunt Work)
+### Automated Code Generation and Boilerplate Support
 
-Generative AI tools (including GitHub Copilot and LLM assistants) were leveraged as high-speed execution engines to accelerate repetitive syntax generation under strict human oversight:
+Generative AI tools, including GitHub Copilot and other LLM-based assistants, were used to accelerate repetitive implementation tasks under human oversight. Typical assisted tasks included:
 
-- **Boilerplate & Syntax Generation:** Synthesized repetitive C++ class templates, CMake target setups, Python `pyserial`/`struct.unpack` parsing loops, and initial Streamlit UI layout scaffolding.
-- **Terminal & Container Orchestration:** Assisted in generating terminal commands, PowerShell Docker build pipelines, and QEMU virtual serial port initialization flags.
-- **Documentation & Formatting:** Generated initial Markdown document structures, inline comments, and technical summaries based on developer specifications.
-- **Verification Statement:** AI tools were utilized strictly for syntax acceleration and mechanical code generation. All embedded C++ algorithms, binary protocol contracts, ML quantization flows, and build configurations were audited, debugged, tested, and validated by the primary author.
+- repetitive C++ class and template scaffolding;
+- CMake target setup and build-file boilerplate;
+- Python parsing and telemetry-processing loops;
+- initial Streamlit UI layout and documentation drafting;
+- shell, Docker, and QEMU command generation for local development workflows.
+
+### Verification and Accountability
+
+AI assistance was limited to syntax acceleration, scaffolding, and mechanical drafting. All critical algorithms, binary protocol definitions, ML quantization flows, configuration changes, and build settings were reviewed, tested, and validated by the project author prior to inclusion.
