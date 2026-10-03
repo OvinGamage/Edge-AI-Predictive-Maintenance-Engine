@@ -1,17 +1,16 @@
 # Edge AI Predictive Maintenance Engine
 
-A self-directed embedded AI proof-of-concept that combines a bare-metal C++17 firmware target, an offline Python data/ML pipeline, and a Streamlit telemetry dashboard. The project simulates a predictive-maintenance workflow on a QEMU-emulated ARM Cortex-M platform. It was built independently as a skills demonstration and is not intended to represent a production-ready system.
+A prototype repository containing a bare-metal C++17 firmware target, Python scripts for preparing C-MAPSS features and exporting a model, and a Streamlit UART viewer. The firmware demo repeatedly processes a fixed set of ten sensor rows; it does not read live sensors or simulate a degradation trajectory. The repository is an educational proof of concept, not a demonstrated end-to-end predictive-maintenance product or a production-ready system.
 
 ## Project Architecture and Tooling
 
-The repository includes the build and runtime pieces needed to reproduce the demo environment, including:
+The repository contains configuration and scripts for an intended demo environment, including:
 
-- CMake toolchains
-- Cross-compilers
-- QEMU ARM simulation
-- Multi-stage Docker containers
+- CMake cross-compilation toolchain files
+- A Dockerfile that declares Linux ARM cross-compilation and QEMU tools
+- A PowerShell QEMU launch script and Python UART bridge
 
-The core technical focus is the low-level bare-metal C++17 firmware and the edge ML pipeline that produces the model artifacts used by the firmware.
+These files do not by themselves establish that the full QEMU and model-export workflow works on every host. Native host tests cover only selected C++ components; the ARM build requires the TensorFlow Lite Micro submodule and its dependencies.
 
 ## System Architecture
 
@@ -42,29 +41,41 @@ ml_pipeline/data/
 
 ## Quick Start
 
-After cloning the repository, install the required dependencies and run the data preparation and training pipeline:
+The Python scripts require the NASA FD001 training file described above. There is no repository-level `requirements.txt`; install the dependencies used by the scripts, then run:
 
 ```bash
 # Install Python dependencies
-pip install -r requirements.txt
+python -m pip install numpy pandas scipy tensorflow scikit-learn
 
 # Extract DSP rolling-window features
 # (RMS, peak-to-peak, and kurtosis)
 python ml_pipeline/prepare_data.py
 
-# Train the model and export the INT8-quantized TFLite engine
+# Train the model and export an INT8 TFLite model and C++ header
 python ml_pipeline/train.py
 ```
 
-The anomaly-detection thresholds used by the firmware (`THRESHOLD_WARN` / `THRESHOLD_CRIT`) are set manually based on the reconstruction-error distribution observed during training. They are not learned automatically and are not recalibrated at runtime.
+The preparation script derives RMS, peak-to-peak, and kurtosis features from five sensor channels over ten-cycle windows. The training script fits a small autoencoder to samples labeled healthy, converts it to INT8 TFLite, calculates warning and critical thresholds from healthy calibration reconstruction errors, and writes those values into a generated C++ header. Thresholds are fixed in the firmware image; they are not updated or learned at runtime. This workflow does not establish model accuracy or suitability for real equipment.
+
+The firmware itself uses a compiled table containing the first ten FD001 rows for channels s_2, s_3, s_4, s_11, and s_12, then repeats those rows. This is deterministic test input, not live acquisition, a realistic engine simulation, or evidence of predictive performance.
 
 ## Telemetry Dashboard
 
-The `dashboard/` directory contains a Streamlit application that connects to the firmware's UART output (directly over serial, or via a TCP socket when running in QEMU) and displays incoming inference events as they arrive. It is a visualization tool for locally observing firmware output during development, not a hardened or continuously monitored production telemetry service. There is no buffering, retry, or backpressure handling beyond what Streamlit and pyserial provide out of the box.
+The `dashboard/` directory contains a Streamlit application and UART bridge for viewing received firmware messages over serial or a TCP socket. This is a local development visualization tool, not a hardened or continuously monitored telemetry service. It has no application-level buffering, retry, or backpressure handling.
 
 ## Testing
 
-The `tests/` directory contains a small set of host-side unit tests (GoogleTest) covering the ring buffer and DSP feature extraction logic in `firmware_core`. These tests run on the host machine and are skipped entirely when cross-compiling for the ARM target (see `tests/CMakeLists.txt`). They validate specific algorithmic building blocks, not full firmware behavior, end-to-end inference, or QEMU runtime integration. CI additionally runs a `clang-format` check against the firmware source.
+The host-side GoogleTest suite covers ring-buffer behavior and DSP feature extraction. It does not test model inference, UART hardware access, the Python pipeline, firmware startup, or QEMU integration. A native build deliberately omits the bare-metal executable and TFLite Micro model runner so tests can run without an ARM toolchain or initialized submodule. Cross-compiling disables the host tests.
+
+Run the same native configure, build, and test sequence used by CI from the repository root:
+
+```bash
+cmake -B build/host -S . -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/host --parallel 4
+ctest --test-dir build/host --output-on-failure
+```
+
+GoogleTest is fetched by CMake on the first configure, so network access may be needed. The CI workflow runs these host tests; it does not validate the ARM firmware, generated model, dashboard, or QEMU runtime.
 
 ## Dataset Attribution and Acknowledgements
 
@@ -91,9 +102,9 @@ The project author was responsible for the core technical direction, including:
 - defining the bare-metal C++17 execution model;
 - establishing the no-dynamic-allocation constraint (`malloc`/`new`);
 - sizing the static Tensor Arena memory budget;
-- validating Cortex-M behavior under QEMU;
-- designing the telemetry serialization format and checksum framing;
-- selecting the DSP feature set and manually setting the anomaly-detection thresholds;
+- documenting an intended Cortex-M/QEMU development workflow;
+- choosing line-oriented UART messages (the current messages do not include checksum framing);
+- selecting the DSP feature set and the reconstruction-error threshold percentiles;
 - managing the build, cross-compilation, Docker, and CI setup.
 
 ### AI-Assisted Implementation Support
