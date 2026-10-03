@@ -1,4 +1,4 @@
-name: Build Verification
+name: Build and Test
 
 on:
   push:
@@ -7,12 +7,17 @@ on:
     branches: [ "main" ]
 
 jobs:
-  check-format:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Check code formatting
+      - name: Install build dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y clang-format
-          # Verification step for C++ files
-          find firmware/ -name '*.hpp' -o -name '*.cpp' | xargs clang-format --dry-run --Werror || true
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential
+      - name: Configure host build
+        run: cmake -B build/host -S . -DCMAKE_BUILD_TYPE=Debug
+      - name: Build host tests
+        run: cmake --build build/host --parallel 4
+      - name: Run host tests
+        run: ctest --test-dir build/host --output-on-failure

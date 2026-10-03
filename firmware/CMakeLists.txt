@@ -1,12 +1,17 @@
 # ------------------------------------------------------------------------------
 # 1. Core Static Library Target (firmware_core)
 # ------------------------------------------------------------------------------
-add_library(firmware_core STATIC
+set(FIRMWARE_CORE_SOURCES
     src/core/ring_buffer.cpp
     src/core/dsp_features.cpp
-    src/ml/model_runner.cpp
     src/drivers/uart.cpp
 )
+
+if(CMAKE_CROSSCOMPILING)
+    list(APPEND FIRMWARE_CORE_SOURCES src/ml/model_runner.cpp)
+endif()
+
+add_library(firmware_core STATIC ${FIRMWARE_CORE_SOURCES})
 
 # Enforce strict C++17 standard rules on the library target
 set_target_properties(firmware_core PROPERTIES
@@ -95,22 +100,24 @@ target_include_directories(firmware_core
 # ------------------------------------------------------------------------------
 # 2. Executable Firmware Binary Target (firmware_app)
 # ------------------------------------------------------------------------------
-add_executable(firmware_app
-    src/startup.S
-    src/main.cpp
-)
-
-target_link_libraries(firmware_app
-    PRIVATE
-        firmware_core
-)
-
 if(CMAKE_CROSSCOMPILING)
+    add_executable(firmware_app
+        src/startup.S
+        src/main.cpp
+    )
+
+    target_link_libraries(firmware_app
+        PRIVATE
+            firmware_core
+    )
+
     set_target_properties(firmware_app PROPERTIES SUFFIX ".elf")
     target_link_options(firmware_app PRIVATE
         "-T${CMAKE_CURRENT_SOURCE_DIR}/linker/mps2_an385.ld"
     )
     target_link_libraries(firmware_app PRIVATE stdc++ supc++ c m nosys gcc)
+else()
+    message(STATUS "Native host build detected: bare-metal firmware_app disabled.")
 endif()
 
 # ------------------------------------------------------------------------------
