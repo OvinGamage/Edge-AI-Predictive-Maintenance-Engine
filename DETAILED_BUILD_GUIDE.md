@@ -8,7 +8,7 @@ describe deployment to physical equipment.
 
 - Git with submodule support
 - CMake 3.15+ and a C++17 compiler for native tests
-- Python 3.9+ and `pip`
+- Python 3.10+ and `pip`
 - Docker with the Compose plugin for ARM cross-compilation and QEMU
 - Docker Desktop and Windows PowerShell for the provided QEMU script and
   dashboard-managed simulator startup

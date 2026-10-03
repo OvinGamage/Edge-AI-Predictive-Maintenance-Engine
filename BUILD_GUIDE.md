@@ -6,7 +6,7 @@ set up physical sensor hardware.
 ## Requirements
 
 - Git with submodule support
-- Python 3.9+ and `pip`
+- Python 3.10+ and `pip`
 - CMake 3.15+ and a C++17 compiler for host tests
 - Docker with Compose for ARM cross-compilation and QEMU
 - Windows PowerShell for `scripts/run_qemu.ps1`

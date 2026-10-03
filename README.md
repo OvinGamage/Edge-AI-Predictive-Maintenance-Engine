@@ -26,7 +26,7 @@ binary frame format, checksum, or `0xDEADBEEF` synchronization marker.
 ## Requirements
 
 - Git (including submodule support)
-- Python 3.9+ and `pip`
+- Python 3.10+ and `pip`
 - CMake 3.15+ and a C++17 compiler for host tests
 - Docker with the Compose plugin for the ARM/QEMU demo
 - Windows PowerShell for the provided `scripts/run_qemu.ps1` helper
