@@ -1,67 +1,75 @@
 # Quick Start Build Guide
 
-This is the shortest path to getting the project built and running locally.
+This guide builds and runs the project's simulated ARM/QEMU demo. It does not
+set up physical sensor hardware.
 
-## 1. Requirements
+## Requirements
 
-Install:
+- Git with submodule support
+- Python 3.9+ and `pip`
+- CMake 3.15+ and a C++17 compiler for host tests
+- Docker with Compose for ARM cross-compilation and QEMU
+- Windows PowerShell for `scripts/run_qemu.ps1`
 
-- Git
-- CMake 3.15+
-- C++17 compiler
-- Python 3.9+
-- `pip`
-- Optional for ARM builds: `arm-none-eabi-gcc`, `objcopy`, `objdump`, and `size`
-
-## 2. Clone the repository
+## Clone and initialize dependencies
 
 ```bash
 git clone --recursive <repository-url>
-cd Machine-Learning
+cd Edge-AI-Predictive-Maintenance-Engine
 ```
 
-If you already cloned without `--recursive`:
+For an existing clone:
 
 ```bash
 git submodule update --init --recursive
 ```
 
-## 3. Prepare TensorFlow Lite Micro dependencies
+The TensorFlow Lite Micro source is provided as a Git submodule.
+`Dockerfile` installs the additional FlatBuffers and Ruy revisions needed for
+the ARM build; do not manually copy dependencies into the submodule.
+
+## Install Python packages and prepare the model
+
+There is no root `requirements.txt`. Install the dashboard dependencies and
+the additional model-training packages:
 
 ```bash
-cd firmware/lib/tflite-micro
-
-mkdir -p third_party/flatbuffers/include third_party/gemmlowp third_party/ruy
-
-git clone --depth 1 https://github.com/google/flatbuffers.git third_party/flatbuffers_repo
-cp -r third_party/flatbuffers_repo/include/flatbuffers third_party/flatbuffers/include/
-
-git clone --depth 1 https://github.com/google/gemmlowp.git third_party/gemmlowp_repo
-cp -r third_party/gemmlowp_repo/fixedpoint third_party/gemmlowp/
-cp -r third_party/gemmlowp_repo/internal third_party/gemmlowp/
-
-rm -rf third_party/flatbuffers_repo third_party/gemmlowp_repo
-cd ../../..
+python -m venv .venv
+# Activate .venv using the command for your shell.
+python -m pip install -r dashboard/requirements.txt
+python -m pip install tensorflow scipy scikit-learn
 ```
 
-## 4. Install Python dependencies and train the model
+Download the NASA C-MAPSS FD001 archive and extract `train_FD001.txt` into
+`ml_pipeline/data/`. The current preparation script uses this training file
+only; it does not read `test_FD001.txt` or `RUL_FD001.txt`.
 
 ```bash
-pip install tensorflow numpy scikit-learn
+python ml_pipeline/prepare_data.py
 python ml_pipeline/train.py
 ```
 
-This generates the model artifact and updates `firmware/include/model_data.h`.
+The training script splits by engine unit, calibrates on healthy units, and
+prints held-out healthy false-positive rates and anomaly recall. These metrics
+are a basic experiment, not an operational guarantee. The pipeline writes
+`ml_pipeline/model.tflite` and `firmware/include/ml/model_data.h`.
 
-## 5. Build host tests
+## Build and run host tests
 
 ```bash
 cmake -B build/host -S .
 cmake --build build/host
 ctest --test-dir build/host --output-on-failure
+python -m unittest discover -s tests/python -v
 ```
 
-## 6. Build ARM firmware
+The Python INT8 conversion test requires TensorFlow and skips when the ML
+dependencies are unavailable. CMake fetches GoogleTest for the native C++ test
+target.
+
+## Build ARM firmware
+
+Run from a PowerShell terminal at the repository root:
 
 ```powershell
 docker compose build
@@ -69,29 +77,38 @@ docker compose run --rm dev-environment cmake -S . -B build/clang-cmake -DCMAKE_
 docker compose run --rm dev-environment cmake --build build/clang-cmake --parallel 4
 ```
 
-## 7. Run the firmware in QEMU
+The output is `build/clang-cmake/firmware/firmware_app.elf`.
 
-Install pySerial. In terminal 1, start QEMU in Docker from the repository root;
-it waits for the host bridge to connect before booting firmware. If PowerShell
-blocks the script, use the process-scoped bypass shown here:
+## Run the simulated demo
+
+The Streamlit dashboard attempts to start Docker Desktop/QEMU and connect to
+the UART socket:
+
+```powershell
+python -m streamlit run dashboard/app.py
+```
+
+For a manual simulator/bridge run, start the firmware with the included QEMU
+script:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run_qemu.ps1
 ```
 
-In terminal 2, connect the telemetry bridge to QEMU's UART socket:
+Then, in another terminal, connect the command-line UART bridge:
 
 ```powershell
 python dashboard/uart_bridge.py socket://127.0.0.1:5555
 ```
 
-The QEMU MPS2-AN385 UART0 is mapped to the socket on port 5555. Override the
-port with `-Port` when starting QEMU and use the same port in the bridge URL.
+Firmware telemetry is newline-delimited text. The demo repeatedly processes
+hard-coded FD001-like sample values; it does not ingest live sensor data.
 
-## 8. Troubleshooting
+## CI and validation scope
 
-- If you see missing TensorFlow Lite headers, ensure the TensorFlow Lite Micro source and third-party dependencies are present.
-- If CMake fails during configuration, verify all source files listed in `add_library()` or `add_executable()` exist.
-- If the ARM build fails, confirm Docker Desktop is running and the image has Clang/LLD installed.
+Local tests cover DSP, ring-buffer, conversion, UART parsing, and dashboard
+telemetry helpers. Current CI does not validate ML metrics, dashboard
+rendering, ARM/QEMU execution, or physical hardware. The formatting workflow
+does not fail the job when formatting differs.
 
-For the full step-by-step developer version, see `DETAILED_BUILD_GUIDE.md`.
+For more detail, see `DETAILED_BUILD_GUIDE.md`.

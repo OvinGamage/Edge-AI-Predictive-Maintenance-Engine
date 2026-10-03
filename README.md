@@ -1,97 +1,133 @@
 # Edge AI Predictive Maintenance Engine
 
-An end-to-end bare-metal C++ edge inference engine running on a QEMU-simulated ARM Cortex-M architecture, with real-time Python telemetry analytics.
+A developer-oriented demonstration of a C++17 firmware inference loop built for
+an ARM Cortex-M3 QEMU machine, with a Python model-training pipeline and a
+Streamlit telemetry dashboard. The end-to-end run is intentionally simulated
+for convenient development and review; it does not connect to physical sensors
+or control real equipment.
 
-## Project Architecture and Tooling
+## What is included
 
-The project is designed to be reproducible and isolated. The complete build ecosystem is pre-configured, including:
+- CMake host and ARM cross-compilation targets, a Clang ARM toolchain, and a
+  single-stage Docker development image containing the compiler and QEMU.
+- A fixed-capacity C++ ring buffer, RMS/peak-to-peak/kurtosis feature
+  extraction, and TensorFlow Lite Micro inference using a static tensor arena.
+- A Python pipeline that prepares FD001 training data, trains a small
+  autoencoder, converts it to INT8 TFLite, and exports the model and calibrated
+  thresholds to `firmware/include/ml/model_data.h`.
+- A Streamlit dashboard and a UART text-line parser for the simulator's status
+  output.
 
-- CMake toolchains
-- Cross-compilers
-- QEMU ARM simulation
-- Multi-stage Docker containers
+The simulated firmware cycles through ten hard-coded rows representing five
+FD001 sensor channels. It does not ingest the dataset at runtime. UART telemetry
+is newline-delimited human-readable text; this repository does not implement a
+binary frame format, checksum, or `0xDEADBEEF` synchronization marker.
 
-The build infrastructure and containerization are provided for reviewer and user convenience. The core technical focus of this repository is the low-level bare-metal C++17 firmware and its edge machine learning pipeline.
+## Requirements
 
-## System Architecture
+- Git (including submodule support)
+- Python 3.9+ and `pip`
+- CMake 3.15+ and a C++17 compiler for host tests
+- Docker with the Compose plugin for the ARM/QEMU demo
+- Windows PowerShell for the provided `scripts/run_qemu.ps1` helper
 
-| Component | Technology |
-| --- | --- |
-| Firmware | C++17, bare-metal ARM Cortex-M, QEMU |
-| ML inference | TensorFlow Lite for Microcontrollers (TFLM) |
-| Data and dashboard | Python, Streamlit, Polars/Pandas |
+The repository includes `dashboard/requirements.txt` for dashboard packages;
+there is no root `requirements.txt`. Install the ML pipeline's additional
+packages separately.
 
-## Dataset Setup
+## Setup and run
 
-This project uses the NASA C-MAPSS (Commercial Modular Aero-Propulsion System Simulation) Flight Data Set, specifically the FD001 subset. Because of repository size constraints, the raw data files are not included in the repository.
-
-### 1. Download the dataset
-
-Download the dataset archive from the NASA Data Portal.
-
-### 2. Extract the data
-
-Extract the following files into `ml_pipeline/data/`:
-
-```text
-ml_pipeline/data/
-├── train_FD001.txt
-├── test_FD001.txt
-└── RUL_FD001.txt
-```
-
-## Quick Start
-
-After cloning the repository, install the required dependencies and run the data preparation and training pipeline:
+Clone with the TensorFlow Lite Micro submodule:
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+git clone --recursive <repository-url>
+cd Edge-AI-Predictive-Maintenance-Engine
+```
 
-# Extract DSP rolling-window features
-# (RMS, peak-to-peak, and kurtosis)
+If the repository is already cloned:
+
+```bash
+git submodule update --init --recursive
+```
+
+Create an environment and install dependencies:
+
+```bash
+python -m venv .venv
+# Activate .venv using the command for your shell.
+python -m pip install -r dashboard/requirements.txt
+python -m pip install tensorflow scipy scikit-learn
+```
+
+Download the NASA C-MAPSS FD001 archive and extract **`train_FD001.txt`** into
+`ml_pipeline/data/`. The preparation script uses that file only; the
+`test_FD001.txt` and `RUL_FD001.txt` files are not currently consumed.
+
+```bash
 python ml_pipeline/prepare_data.py
-
-# Train the model and export the INT8-quantized TFLite engine
 python ml_pipeline/train.py
 ```
 
-## Dataset Attribution and Acknowledgements
+Training splits by engine unit, fits normalization on healthy training units,
+calibrates warning/critical thresholds on separate healthy units, and prints
+false-positive and anomaly-recall rates for held-out units. These are
+experimental dataset results, not evidence of operational performance.
+Training writes `ml_pipeline/model.tflite` and updates
+`firmware/include/ml/model_data.h`.
 
-This project uses the C-MAPSS Flight Data Set, provided by the NASA Prognostics Center of Excellence (PCoE).
+### Host build and tests
 
-- **Source:** NASA Ames Research Center / NASA PCoE Data Set Repository
-- **Citation:** Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). “Damage Propagation Modeling for Aircraft Engine Run-to-Failure Simulation.” In *Proceedings of the 1st International Conference on Prognostics and Health Management (PHM 2008)*.
-- **License/access:** Public domain / Open NASA Data (U.S. Government work)
+```bash
+cmake -B build/host -S .
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
+python -m unittest discover -s tests/python -v
+```
 
-> **Disclaimer:** This repository is an independent open-source software project created solely for educational and portfolio demonstration purposes. It is not officially endorsed by, affiliated with, or maintained by NASA or any other organization referenced in the dataset materials.
+The C++ tests cover DSP features and ring-buffer behavior. Python tests cover
+INT8 conversion (when TensorFlow dependencies are installed), UART parsing, and
+dashboard telemetry handling. GoogleTest is fetched by CMake, so host
+configuration needs network access if it is not already cached.
 
-## AI Transparency & Architectural Ownership Disclaimer
+### ARM/QEMU demo
 
-This repository was developed using a systems-architect-led workflow with AI assistance used primarily for implementation acceleration and boilerplate generation. The underlying architecture, constraints, and validation strategy were defined and reviewed by the project author.
+Build the cross-compiled firmware in Docker:
 
-### Architectural Ownership and Strategic Engineering
+```powershell
+docker compose build
+docker compose run --rm dev-environment cmake -S . -B build/clang-cmake -DCMAKE_TOOLCHAIN_FILE=cmake/clang-arm-none-eabi.cmake
+docker compose run --rm dev-environment cmake --build build/clang-cmake --parallel 4
+```
 
-The developer was responsible for the core engineering direction, including:
+On Windows with Docker Desktop, launch the dashboard after building:
 
-- defining bare-metal C++17 execution constraints;
-- establishing zero-dynamic-allocation boundaries (`malloc`/`new`);
-- sizing static Tensor Arena memory budgets;
-- validating ARM Cortex-M behavior through QEMU simulation;
-- designing the binary serialization contract, including memory-aligned telemetry structs, additive checksum checks, and frame synchronization using `0xDEADBEEF`;
-- selecting the DSP feature set and anomaly threshold strategy;
-- managing the build, cross-compilation, Docker, and CI integration.
+```powershell
+python -m streamlit run dashboard/app.py
+```
 
-### Automated Code Generation and Boilerplate Support
+The dashboard attempts to start the QEMU simulator through Docker and connect
+to its UART socket. Alternatively, use `scripts/run_qemu.ps1` to start QEMU and
+run `python dashboard/uart_bridge.py socket://127.0.0.1:5555` in a second
+terminal to print parsed UART events.
 
-Generative AI tools, including GitHub Copilot and other LLM-based assistants, were used to accelerate repetitive implementation tasks under human oversight. Typical assisted tasks included:
+## Scope and limitations
 
-- repetitive C++ class and template scaffolding;
-- CMake target setup and build-file boilerplate;
-- Python parsing and telemetry-processing loops;
-- initial Streamlit UI layout and documentation drafting;
-- shell, Docker, and QEMU command generation for local development workflows.
+- QEMU supplies a convenient simulated target; the firmware input is a
+  repeating in-memory sample window rather than live or streamed sensor data.
+- The model is trained on C-MAPSS FD001 training trajectories. The pipeline
+  does not evaluate the official FD001 test set or its RUL targets.
+- The held-out evaluation is a basic anomaly-detection check with healthy
+  calibration thresholds. It is not a comprehensive model benchmark.
+- CI currently provides limited host/format checks. It does not establish
+  successful ARM builds, dashboard behavior, model quality, or hardware
+  validation; the formatting workflow is non-blocking.
 
-### Verification and Accountability
+## Dataset citation
 
-AI assistance was limited to syntax acceleration, scaffolding, and mechanical drafting. All critical algorithms, binary protocol definitions, ML quantization flows, configuration changes, and build settings were reviewed, tested, and validated by the project author prior to inclusion.
+This project uses the C-MAPSS Flight Data Set from NASA's Prognostics Center of
+Excellence. See the included `ml_pipeline/readme.txt` and the associated
+publication: A. Saxena, K. Goebel, D. Simon, and N. Eklund, “Damage Propagation
+Modeling for Aircraft Engine Run-to-Failure Simulation,” PHM 2008.
+
+This independent educational project is not endorsed by or affiliated with
+NASA.

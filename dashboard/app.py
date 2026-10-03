@@ -75,20 +75,16 @@ import shutil
 import threading
 import time
 from datetime import datetime
-from typing import TypedDict
-
 import pandas as pd
 import serial
 from streamlit.runtime.runtime import Runtime
 
-from uart_bridge import parse_line
-
-
-class TelemetryEvent(TypedDict):
-    received_at: datetime
-    status: str
-    mse: float | None
-    message: str
+from telemetry import (
+    TelemetryEvent,
+    latest_health_event,
+    parse_telemetry_event,
+    retain_recent_events,
+)
 
 
 st.set_page_config(
@@ -321,22 +317,10 @@ def read_uart_events() -> None:
     if not raw_line:
         return
 
-    parsed = parse_line(raw_line.decode("utf-8", errors="replace"))
-    if parsed is not None:
-        status = parsed["status"]
-        message = parsed["message"]
-        mse_value = parsed["mse"]
-        if isinstance(status, str) and isinstance(message, str):
-            mse = float(mse_value) if isinstance(mse_value, (int, float)) else None
-            event: TelemetryEvent = {
-                "received_at": datetime.now(),
-                "status": status,
-                "mse": mse,
-                "message": message,
-            }
-            st.session_state.events.append(event)
-
-    st.session_state.events = st.session_state.events[-500:]
+    event = parse_telemetry_event(raw_line.decode("utf-8", errors="replace"))
+    if event is not None:
+        st.session_state.events.append(event)
+    st.session_state.events = retain_recent_events(st.session_state.events)
 
 
 def render_normal(events: list[TelemetryEvent], latest: TelemetryEvent | None) -> None:
@@ -347,10 +331,7 @@ def render_normal(events: list[TelemetryEvent], latest: TelemetryEvent | None) -
         st.info("Connect to a device to see its current health status.")
         return
 
-    health_event = next(
-        (event for event in reversed(events) if event["status"] in {"ok", "warning", "critical", "error"}),
-        latest,
-    )
+    health_event = latest_health_event(events) or latest
     status = str(health_event["status"])
     messages = {
         "ok": (
@@ -423,10 +404,7 @@ def render_advanced(events: list[TelemetryEvent], latest: TelemetryEvent | None)
     history = pd.DataFrame(events)
     mse = next((event["mse"] for event in reversed(events) if event["mse"] is not None), None)
     mse_label = f"{mse:.5f}" if mse is not None else "N/A"
-    health_event = next(
-        (event for event in reversed(events) if event["status"] in {"ok", "warning", "critical", "error"}),
-        latest,
-    )
+    health_event = latest_health_event(events) or latest
     metric_columns = st.columns(3)
     metric_columns[0].metric("Latest health result", str(health_event["status"]).upper())
     metric_columns[1].metric("Latest reconstruction MSE", mse_label)

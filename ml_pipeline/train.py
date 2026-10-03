@@ -5,7 +5,6 @@ import tensorflow as tf
 keras = tf.keras
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import GroupKFold
 
 # Set random seeds for reproducibility
 np.random.seed(42)
@@ -20,23 +19,56 @@ HEADER_OUTPUT_PATH = os.path.join(
 
 
 def load_healthy_data():
-    """Loads preprocessed features and filters strictly healthy samples for Autoencoder training."""
+    """Split by engine before fitting the scaler to avoid adjacent-window leakage."""
     if not os.path.exists(DATA_PATH):
         raise FileNotFoundError(f"Could not find {DATA_PATH}. Run prepare_data.py first!")
 
     df = pd.read_csv(DATA_PATH)
-    
-    # Scale all features (Mean=0, Std=1)
+
+    units = df["unit_number"].drop_duplicates().to_numpy()
+    if len(units) < 5:
+        raise ValueError("At least five distinct engine units are required for evaluation.")
+    train_units, test_units = train_test_split(units, test_size=0.2, random_state=42)
+    train_units, calibration_units = train_test_split(
+        train_units, test_size=0.25, random_state=42
+    )
+
+    train_rows = df[df["unit_number"].isin(train_units)]
+    calibration_rows = df[df["unit_number"].isin(calibration_units)]
+    test_rows = df[df["unit_number"].isin(test_units)]
+    feature_columns = ["rms", "peak_to_peak", "kurtosis"]
+    train_healthy = train_rows[train_rows["label"] == 0]
+    calibration_healthy = calibration_rows[calibration_rows["label"] == 0]
+    test_healthy = test_rows[test_rows["label"] == 0]
+    test_anomalous = test_rows[test_rows["label"] == 1]
+    if any(
+        frame.empty
+        for frame in (
+            train_healthy,
+            calibration_healthy,
+            test_healthy,
+            test_anomalous,
+        )
+    ):
+        raise ValueError(
+            "The engine-unit split must contain healthy training, calibration, "
+            "and test rows plus anomalous test rows."
+        )
+
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df[["rms", "peak_to_peak", "kurtosis"]].values)
-    
-    # Train Autoencoder ONLY on healthy operational baseline (label == 0)
-    X_healthy = X_scaled[df["label"].values == 0]
-    X_anomalous = X_scaled[df["label"].values == 1]
+    scaler.fit(train_healthy[feature_columns].values)
 
-    X_train, X_test = train_test_split(X_healthy, test_size=0.2, random_state=42)
+    def transform(frame):
+        return scaler.transform(frame[feature_columns].values).astype(np.float32)
 
-    return X_train, X_test, X_anomalous, scaler.mean_, scaler.scale_
+    return (
+        transform(train_healthy),
+        transform(calibration_healthy),
+        transform(test_healthy),
+        transform(test_anomalous),
+        scaler.mean_,
+        scaler.scale_,
+    )
 
 
 def build_autoencoder():
@@ -79,8 +111,19 @@ def convert_to_int8_tflite(model, X_train):
 
     print(f"✅ INT8 Quantized Autoencoder TFLite model saved: {TFLITE_MODEL_PATH}")
     return tflite_model
+
+
 def calculate_int8_thresholds(tflite_model, X_calibration):
     """Calculate healthy reconstruction-error thresholds using INT8 TFLite inference."""
+    errors = calculate_int8_errors(tflite_model, X_calibration)
+    return float(np.percentile(errors, 95)), float(np.percentile(errors, 99.5))
+
+
+def calculate_int8_errors(tflite_model, samples):
+    """Return per-sample reconstruction MSE using the exported INT8 model."""
+    if len(samples) == 0:
+        raise ValueError("At least one sample is required to calculate reconstruction errors.")
+
     interpreter = tf.lite.Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
@@ -94,7 +137,7 @@ def calculate_int8_thresholds(tflite_model, X_calibration):
         raise ValueError("TFLite input/output quantization scales must be positive.")
 
     errors = []
-    for sample in X_calibration:
+    for sample in samples:
         sample = sample.reshape(1, -1).astype(np.float32)
 
         quantized_input = np.rint(sample / input_scale + input_zero_point)
@@ -114,9 +157,29 @@ def calculate_int8_thresholds(tflite_model, X_calibration):
 
         errors.append(float(np.mean(np.square(sample - reconstruction))))
 
-    mse_95 = float(np.percentile(errors, 95))
-    mse_99_5 = float(np.percentile(errors, 99.5))
-    return mse_95, mse_99_5
+    return np.asarray(errors, dtype=np.float32)
+
+
+def evaluate_anomaly_detection(
+    healthy_errors, anomalous_errors, warn_threshold, critical_threshold
+):
+    """Report holdout false-positive and anomaly-detection rates at calibrated thresholds."""
+    if len(healthy_errors) == 0 or len(anomalous_errors) == 0:
+        raise ValueError("Evaluation requires healthy and anomalous holdout samples.")
+    if critical_threshold < warn_threshold:
+        raise ValueError("Critical threshold must not be lower than the warning threshold.")
+
+    def rates(errors, threshold):
+        return float(np.mean(errors >= threshold))
+
+    return {
+        "healthy_samples": len(healthy_errors),
+        "anomalous_samples": len(anomalous_errors),
+        "healthy_false_positive_warn": rates(healthy_errors, warn_threshold),
+        "healthy_false_positive_critical": rates(healthy_errors, critical_threshold),
+        "anomaly_recall_warn": rates(anomalous_errors, warn_threshold),
+        "anomaly_recall_critical": rates(anomalous_errors, critical_threshold),
+    }
 
 
 def export_c_header(tflite_model, mse_95, mse_99_5, feature_mean, feature_scale):
@@ -157,7 +220,14 @@ const size_t g_model_len = {array_len};
 
 def main():
     print("Loading healthy training baseline...")
-    X_train, X_test, X_anomalous, feature_mean, feature_scale = load_healthy_data()
+    (
+        X_train,
+        X_calibration,
+        X_test_healthy,
+        X_test_anomalous,
+        feature_mean,
+        feature_scale,
+    ) = load_healthy_data()
 
     print("Building and training Autoencoder...")
     autoencoder = build_autoencoder()
@@ -166,19 +236,26 @@ def main():
         X_train,  # Targets are identical to input for autoencoding
         epochs=20,
         batch_size=32,
-        validation_data=(X_test, X_test),
+        validation_data=(X_calibration, X_calibration),
         verbose=1
     )
 
-    # Calculate baseline reconstruction error threshold
-    reconstructions = autoencoder.predict(X_test, verbose=0)
-    healthy_mse = np.mean(np.square(X_test - reconstructions), axis=1)
-    mse_95 = np.percentile(healthy_mse, 95)
-    mse_99_5 = np.percentile(healthy_mse, 99.5)
     print("\nQuantizing Autoencoder to INT8...")
     tflite_model = convert_to_int8_tflite(autoencoder, X_train)
 
-    mse_95, mse_99_5 = calculate_int8_thresholds(tflite_model, X_test)
+    mse_95, mse_99_5 = calculate_int8_thresholds(tflite_model, X_calibration)
+    evaluation = evaluate_anomaly_detection(
+        calculate_int8_errors(tflite_model, X_test_healthy),
+        calculate_int8_errors(tflite_model, X_test_anomalous),
+        mse_95,
+        mse_99_5,
+    )
+    print("\nHeld-out engine-unit evaluation (thresholds calibrated on healthy units):")
+    for name, value in evaluation.items():
+        if name.endswith("_samples"):
+            print(f"  {name}: {value}")
+        else:
+            print(f"  {name}: {value:.1%}")
 
     print("\nExporting model and thresholds to static C++ header...")
     export_c_header(
@@ -188,47 +265,6 @@ def main():
         feature_mean,
         feature_scale,
     )
-def cross_validate_cmapss(df, feature_cols, target_col='RUL', n_splits=5):
-    """
-    Performs Group K-Fold Cross Validation keeping unit_numbers intact within folds.
-    """
-    groups = df['unit_number'].values
-    X = df[feature_cols].values
-    y = df[target_col].values
-
-    gkf = GroupKFold(n_splits=n_splits)
-    fold_scores = []
-
-    for fold, (train_idx, val_idx) in enumerate(gkf.split(X, y, groups)):
-        X_train, y_train = X[train_idx], y[train_idx]
-        X_val, y_val = X[val_idx], y[val_idx]
-
-        # Build model
-        model = tf.keras.Sequential([
-            tf.keras.layers.Dense(32, activation='relu', input_shape=(X_train.shape[1],)),
-            tf.keras.layers.Dense(16, activation='relu'),
-            tf.keras.layers.Dense(1)
-        ])
-        
-        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-        
-        # Train
-        model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
-            epochs=15,
-            batch_size=64,
-            verbose=0
-        )
-
-        # Evaluate
-        val_loss, val_mae = model.evaluate(X_val, y_val, verbose=0)
-        fold_scores.append(val_mae)
-        print(f"Fold {fold + 1} - Validation MAE: {val_mae:.4f}")
-
-    print(f"\nMean CV MAE: {np.mean(fold_scores):.4f} +/- {np.std(fold_scores):.4f}")
-    return fold_scores
-
 
 if __name__ == "__main__":
     main()
